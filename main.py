@@ -209,40 +209,65 @@ def active_window_title():
         return "(unknown)"
 
 
+def build_binary_mask(gray, fill_holes=False):
+    blur = cv2.GaussianBlur(gray, (3, 3), 0)
+    norm = cv2.normalize(blur, None, 0, 255, cv2.NORM_MINMAX)
+    _, otsu = cv2.threshold(norm, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    adaptive = cv2.adaptiveThreshold(
+        norm, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 1
+    )
+    combined = cv2.bitwise_or(otsu, adaptive)
+    if np.count_nonzero(combined) < combined.size * 0.01:
+        adaptive_lo = cv2.adaptiveThreshold(
+            norm, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 41, 0
+        )
+        combined = cv2.bitwise_or(combined, adaptive_lo)
+    if np.count_nonzero(combined) > (combined.size / 2):
+        combined = cv2.bitwise_not(combined)
+    kernel = np.ones((3, 3), dtype=np.uint8)
+    combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, kernel, iterations=2)
+    combined = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel, iterations=1)
+    if fill_holes:
+        h, w = combined.shape
+        flood = combined.copy()
+        mask = np.zeros((h + 2, w + 2), np.uint8)
+        cv2.floodFill(flood, mask, (0, 0), 255)
+        flood_inv = cv2.bitwise_not(flood)
+        combined = cv2.bitwise_or(combined, flood_inv)
+    return combined
+
+
 def extract_shape_contour(gray):
     # 从形状模板中提取最大外轮廓
-    blur = cv2.GaussianBlur(gray, (3, 3), 0)
-    _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    if np.count_nonzero(thresh) > (thresh.size / 2):
-        thresh = cv2.bitwise_not(thresh)
+    thresh = build_binary_mask(gray)
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     return largest_contour(contours)
 
 
-def find_frame_contours(
-    gray, edge_low, edge_high, clahe_clip, clahe_tile, grad_percentile, use_grad
-):
-    # 通过提升局部对比度后再做边缘提取，提高浅色目标的可检测性
+def find_frame_contours(gray, clahe_clip, clahe_tile):
+    # Use thresholded, filled contours for more stable shape matching.
     clahe = cv2.createCLAHE(clipLimit=clahe_clip, tileGridSize=(clahe_tile, clahe_tile))
     enhanced = clahe.apply(gray)
-    blur = cv2.GaussianBlur(enhanced, (3, 3), 0)
+    thresh = build_binary_mask(enhanced, fill_holes=True)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    return contours, thresh
 
-    edges = cv2.Canny(blur, edge_low, edge_high)
-    if use_grad:
-        # 梯度幅值增强浅色边缘
-        grad_x = cv2.Scharr(blur, cv2.CV_32F, 1, 0)
-        grad_y = cv2.Scharr(blur, cv2.CV_32F, 0, 1)
-        mag = cv2.magnitude(grad_x, grad_y)
-        mag = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-        thresh_val = np.percentile(mag, grad_percentile)
-        grad_mask = (mag >= thresh_val).astype(np.uint8) * 255
-        combined = cv2.bitwise_or(edges, grad_mask)
-    else:
-        combined = edges
-    kernel = np.ones((3, 3), dtype=np.uint8)
-    combined = cv2.dilate(combined, kernel, iterations=1)
-    contours, _ = cv2.findContours(combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    return contours
+
+def contour_mask_diff_ratio(contour, template_mask):
+    x, y, w, h = cv2.boundingRect(contour)
+    if w <= 0 or h <= 0:
+        return None
+    mask = np.zeros((h, w), dtype=np.uint8)
+    shifted = contour - np.array([[x, y]], dtype=contour.dtype)
+    cv2.drawContours(mask, [shifted], -1, 255, thickness=-1)
+    resized = cv2.resize(
+        mask,
+        (template_mask.shape[1], template_mask.shape[0]),
+        interpolation=cv2.INTER_NEAREST,
+    )
+    diff = cv2.bitwise_xor(resized, template_mask)
+    return np.count_nonzero(diff) / float(template_mask.size)
+
 
 
 class RuntimeState:
@@ -282,29 +307,19 @@ class RuntimeState:
                 self.last_detected_time,
             )
 
-    def last_center(self):
-        with self.lock:
-            return self.last_detected_center
-
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--shape", default="shape.png")
-    parser.add_argument("--processing", default="ing.png")
-    parser.add_argument("--done", default="ed.png")
-    parser.add_argument("--interval-ms", type=int, default=100)
-    parser.add_argument("--size", type=int, default=400)
-    parser.add_argument("--min-area", type=int, default=800)
+    parser.add_argument("--interval-ms", type=int, default=25)
+    parser.add_argument("--size", type=int, default=200)
+    parser.add_argument("--min-area", type=int, default=200)
     parser.add_argument("--max-area", type=int, default=100000)
-    parser.add_argument("--frame-ratio", type=float, default=0.125)
-    parser.add_argument("--shape-score-max", type=float, default=0.25)
-    parser.add_argument("--edge-low", type=int, default=30)
-    parser.add_argument("--edge-high", type=int, default=100)
-    parser.add_argument("--clahe-clip", type=float, default=2.0)
+    parser.add_argument("--shape-score-max", type=float, default=1.0)
+    parser.add_argument("--clahe-clip", type=float, default=64.0)
     parser.add_argument("--clahe-tile", type=int, default=8)
-    parser.add_argument("--grad-percentile", type=float, default=92.0)
-    parser.add_argument("--scan-size", type=int, default=220)
-    parser.add_argument("--track-size", type=int, default=140)
+    parser.add_argument("--scan-size", type=int, default=200)
+    parser.add_argument("--track-size", type=int, default=200)
     parser.add_argument("--no-track", action="store_true")
     parser.add_argument("--no-fallback-scan", dest="fallback_scan", action="store_false")
     parser.add_argument("--select-radius", type=int, default=20)
@@ -313,9 +328,9 @@ def main():
     parser.add_argument("--show", action="store_true")
     parser.add_argument("--show-color", action="store_true")
     parser.add_argument("--no-show-color", dest="show_color", action="store_false")
-    parser.add_argument("--color-tol", type=int, default=12)
+    parser.add_argument("--color-tol", type=int, default=32)
     parser.add_argument("--action-cooldown-ms", type=int, default=80)
-    parser.add_argument("--match-streak", type=int, default=1)
+    parser.add_argument("--match-streak", type=int, default=2)
     parser.add_argument("--stable-px", type=int, default=2)
     parser.add_argument("--detect-fresh-ms", type=int, default=25)
     parser.add_argument("--strict-select", action="store_true")
@@ -324,41 +339,35 @@ def main():
     args = parser.parse_args()
 
     shape_img = load_image_bgr(args.shape)
-    processing_img = load_image_bgr(args.processing)
-    done_img = load_image_bgr(args.done)
     shape_gray = cv2.cvtColor(shape_img, cv2.COLOR_BGR2GRAY)
-    processing_gray = cv2.cvtColor(processing_img, cv2.COLOR_BGR2GRAY)
-    done_gray = cv2.cvtColor(done_img, cv2.COLOR_BGR2GRAY)
+    template_mask = build_binary_mask(shape_gray)
     # 用形状模板定位，用外框颜色均值区分 ing/ed
     template_contour = extract_shape_contour(shape_gray)
     if template_contour is None:
         raise ValueError("未能从 shape.png 中提取轮廓，请检查模板是否清晰。")
-    processing_mask = outer_frame_mask(
-        processing_gray.shape[0], processing_gray.shape[1], args.frame_ratio
-    )
-    done_mask = outer_frame_mask(done_gray.shape[0], done_gray.shape[1], args.frame_ratio)
-    processing_mean = masked_gray_mean(processing_gray, processing_mask)
-    done_mean = masked_gray_mean(done_gray, done_mask)
 
     state = RuntimeState()
     kb = keyboard.Controller()
 
     def on_press(key):
         if key == keyboard.KeyCode.from_char("x"):
-            recorded = state.record_current()
-            if recorded is None:
-                print("[record] no detected color to record")
+            (_, _, _, center, detected_time) = state.snapshot()
+            fresh = (time.time() - detected_time) * 1000 <= args.detect_fresh_ms
+            if center is None or not fresh:
+                print("[action:x] no fresh detected shape")
             else:
-                center = state.last_center()
-                print(f"[record] color={list(recorded)} center={center}")
+                recorded = state.record_current()
+                if recorded is None:
+                    print("[record] no detected color to record")
+                else:
+                    print(f"[record] color={list(recorded)} center={center}")
                 print(f"[action:x] press i active_window={active_window_title()}")
                 kb.press("i")
                 time.sleep(0.01)
                 kb.release("i")
                 time.sleep(0.05)
-                if center is not None:
-                    print(f"[action:x] move to {center}")
-                    pyautogui.moveTo(center[0], center[1])
+                print(f"[action:x] move to {center}")
+                pyautogui.moveTo(center[0], center[1])
                 time.sleep(0.05)
                 print(f"[action:x] click active_window={active_window_title()}")
                 pyautogui.click()
@@ -390,16 +399,12 @@ def main():
 
             def process_roi(roi_frame, roi_x, roi_y):
                 if roi_frame.size == 0:
-                    return None, None, 0
+                    return None, None, 0, None
                 roi_gray = cv2.cvtColor(roi_frame, cv2.COLOR_BGR2GRAY)
-                contours = find_frame_contours(
+                contours, debug_thresh = find_frame_contours(
                     roi_gray,
-                    args.edge_low,
-                    args.edge_high,
                     args.clahe_clip,
                     args.clahe_tile,
-                    args.grad_percentile,
-                    True,
                 )
                 candidates = 0
                 best_score = None
@@ -420,16 +425,16 @@ def main():
                         dist_abs = abs(dist)
                         hit = dist_abs <= args.select_radius
                     if hit:
-                        score = cv2.matchShapes(
-                            contour, template_contour, cv2.CONTOURS_MATCH_I1, 0.0
-                        )
+                        score = contour_mask_diff_ratio(contour, template_mask)
+                        if score is None:
+                            continue
                         if best_score is None or score < best_score or (
                             best_score is not None and score == best_score and dist_abs < best_dist
                         ):
                             best_score = score
                             selected = contour
                             best_dist = dist_abs
-                return selected, best_score, candidates
+                return selected, best_score, candidates, debug_thresh
 
             candidates = 0
             best_score = None
@@ -437,6 +442,7 @@ def main():
             roi_x = 0
             roi_y = 0
             mode = "scan"
+            debug_thresh = None
 
             if not args.no_track and last_selected_rect is not None:
                 rx, ry, rw, rh = last_selected_rect
@@ -445,7 +451,7 @@ def main():
                 roi_frame, _, _, roi_x, roi_y = grab_region_within(
                     frame, offset_x, offset_y, cx, cy, args.track_size
                 )
-                selected, best_score, candidates = process_roi(roi_frame, roi_x, roi_y)
+                selected, best_score, candidates, debug_thresh = process_roi(roi_frame, roi_x, roi_y)
                 mode = "track"
 
                 if (
@@ -458,56 +464,36 @@ def main():
                     roi_frame, _, _, roi_x, roi_y = grab_region_within(
                         frame, offset_x, offset_y, mouse_x, mouse_y, args.scan_size
                     )
-                    selected, best_score, candidates = process_roi(roi_frame, roi_x, roi_y)
+                    selected, best_score, candidates, debug_thresh = process_roi(
+                        roi_frame, roi_x, roi_y
+                    )
                     mode = "scan"
             else:
                 roi_frame, _, _, roi_x, roi_y = grab_region_within(
                     frame, offset_x, offset_y, mouse_x, mouse_y, args.scan_size
                 )
-                selected, best_score, candidates = process_roi(roi_frame, roi_x, roi_y)
+                selected, best_score, candidates, debug_thresh = process_roi(
+                    roi_frame, roi_x, roi_y
+                )
 
             if selected is not None and best_score is not None and best_score <= args.shape_score_max:
                 x, y, w, h = cv2.boundingRect(selected)
                 x += roi_x
                 y += roi_y
                 roi = frame[y : y + h, x : x + w]
-                roi_gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-                roi_mask = outer_frame_mask(h, w, args.frame_ratio)
-                roi_mean = masked_gray_mean(roi, roi_mask)
-                processing_dist = abs(roi_mean - processing_mean)
-                done_dist = abs(roi_mean - done_mean)
-                is_processing = processing_dist <= done_dist
-
-                if is_processing:
-                    contour = np.array(
-                        [[[x, y]], [[x + w, y]], [[x + w, y + h]], [[x, y + h]]],
-                        dtype=np.int32,
-                    )
-                    (cx, cy), bgr = read_center_color(frame, contour, offset_x, offset_y)
-                    state.set_last_detected(bgr, (cx, cy))
-                    key = (cx, cy)
-                    if key != last_selected:
-                        roi_bgr = masked_bgr_mean(roi, roi_mask)
-                        roi_hsv = cv2.cvtColor(
-                            np.array([[roi_bgr]], dtype=np.uint8), cv2.COLOR_BGR2HSV
-                        )[0][0].tolist()
-                        print(
-                            f"[processing] center=({cx},{cy}) bgr={bgr} "
-                            f"frame_bgr={[round(v, 1) for v in roi_bgr]} "
-                            f"frame_hsv={roi_hsv}"
-                        )
-                        last_selected = key
-                        last_selected_rect = (x, y, w, h)
-                        last_color_bgr = bgr
-                    if args.show:
-                        t = frame_thickness(h, w, args.frame_ratio)
-                        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                        cv2.rectangle(
-                            frame, (x + t, y + t), (x + w - t, y + h - t), (0, 255, 255), 1
-                        )
-                else:
-                    last_selected = None
-                    last_selected_rect = None
+                contour = np.array(
+                    [[[x, y]], [[x + w, y]], [[x + w, y + h]], [[x, y + h]]],
+                    dtype=np.int32,
+                )
+                (cx, cy), bgr = read_center_color(frame, contour, offset_x, offset_y)
+                state.set_last_detected(bgr, (cx, cy))
+                key = (cx, cy)
+                if key != last_selected:
+                    print(f"[shape] center=({cx},{cy}) bgr={bgr}")
+                    last_selected = key
+                    last_selected_rect = (x, y, w, h)
+                if args.show:
+                    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
             else:
                 last_selected = None
                 last_selected_rect = None
@@ -515,10 +501,13 @@ def main():
             if args.debug and time.time() - last_debug >= args.debug_every:
                 print(
                     f"[debug] mode={mode} candidates={candidates} "
-                    f"best_score={(best_score if best_score is not None else -1):.3f} "
-                    f"proc_mean={processing_mean:.1f} done_mean={done_mean:.1f}"
+                    f"best_score={(best_score if best_score is not None else -1):.3f}"
                 )
                 last_debug = time.time()
+            if args.debug and debug_thresh is not None:
+                cv2.imshow("debug_thresh", debug_thresh)
+                cv2.setWindowProperty("debug_thresh", cv2.WND_PROP_TOPMOST, 1)
+                set_window_topmost_no_activate("debug_thresh")
 
             (
                 last_detected_bgr,
