@@ -118,14 +118,25 @@ def detect_squares(frame_bgr, min_area, max_area):
     return candidates
 
 
-def read_center_color(frame_bgr, contour, offset_x=0, offset_y=0):
+def read_center_color(frame_bgr, contour, offset_x=0, offset_y=0, sample_radius=3):
     x, y, w, h = cv2.boundingRect(contour)
     cx = x + w // 2
     cy = y + h // 2
     h_img, w_img = frame_bgr.shape[:2]
     cx = clamp(cx, 0, w_img - 1)
     cy = clamp(cy, 0, h_img - 1)
-    bgr = frame_bgr[cy, cx].tolist()
+    if sample_radius <= 0:
+        bgr = frame_bgr[cy, cx].tolist()
+        return (cx + offset_x, cy + offset_y), bgr
+    rx = max(x, cx - sample_radius)
+    ry = max(y, cy - sample_radius)
+    rx2 = min(x + w, cx + sample_radius + 1)
+    ry2 = min(y + h, cy + sample_radius + 1)
+    roi = frame_bgr[ry:ry2, rx:rx2]
+    if roi.size == 0:
+        bgr = frame_bgr[cy, cx].tolist()
+    else:
+        bgr = [int(v) for v in roi.mean(axis=(0, 1)).tolist()]
     return (cx + offset_x, cy + offset_y), bgr
 
 
@@ -209,8 +220,10 @@ def active_window_title():
         return "(unknown)"
 
 
-def build_binary_mask(gray, fill_holes=False):
+def build_binary_mask(gray, fill_holes=False, low_contrast_std=4.0):
     blur = cv2.GaussianBlur(gray, (3, 3), 0)
+    if blur.std() < low_contrast_std:
+        return np.zeros_like(blur)
     norm = cv2.normalize(blur, None, 0, 255, cv2.NORM_MINMAX)
     _, otsu = cv2.threshold(norm, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     adaptive = cv2.adaptiveThreshold(
@@ -224,6 +237,12 @@ def build_binary_mask(gray, fill_holes=False):
         combined = cv2.bitwise_or(combined, adaptive_lo)
     if np.count_nonzero(combined) > (combined.size / 2):
         combined = cv2.bitwise_not(combined)
+    white_ratio = np.count_nonzero(combined) / float(combined.size)
+    if white_ratio > 0.85:
+        strict = cv2.bitwise_and(otsu, adaptive)
+        if np.count_nonzero(strict) > (strict.size / 2):
+            strict = cv2.bitwise_not(strict)
+        combined = strict
     kernel = np.ones((3, 3), dtype=np.uint8)
     combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, kernel, iterations=2)
     combined = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel, iterations=1)
@@ -244,11 +263,13 @@ def extract_shape_contour(gray):
     return largest_contour(contours)
 
 
-def find_frame_contours(gray, clahe_clip, clahe_tile):
+def find_frame_contours(gray, clahe_clip, clahe_tile, low_contrast_std):
     # Use thresholded, filled contours for more stable shape matching.
     clahe = cv2.createCLAHE(clipLimit=clahe_clip, tileGridSize=(clahe_tile, clahe_tile))
     enhanced = clahe.apply(gray)
-    thresh = build_binary_mask(enhanced, fill_holes=True)
+    thresh = build_binary_mask(
+        enhanced, fill_holes=True, low_contrast_std=low_contrast_std
+    )
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     return contours, thresh
 
@@ -256,7 +277,7 @@ def find_frame_contours(gray, clahe_clip, clahe_tile):
 def contour_mask_diff_ratio(contour, template_mask):
     x, y, w, h = cv2.boundingRect(contour)
     if w <= 0 or h <= 0:
-        return None
+        return None, None
     mask = np.zeros((h, w), dtype=np.uint8)
     shifted = contour - np.array([[x, y]], dtype=contour.dtype)
     cv2.drawContours(mask, [shifted], -1, 255, thickness=-1)
@@ -266,7 +287,9 @@ def contour_mask_diff_ratio(contour, template_mask):
         interpolation=cv2.INTER_NEAREST,
     )
     diff = cv2.bitwise_xor(resized, template_mask)
-    return np.count_nonzero(diff) / float(template_mask.size)
+    diff_ratio = np.count_nonzero(diff) / float(template_mask.size)
+    fill_ratio = np.count_nonzero(resized) / float(resized.size)
+    return diff_ratio, fill_ratio
 
 
 
@@ -311,28 +334,31 @@ class RuntimeState:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--shape", default="shape.png")
-    parser.add_argument("--interval-ms", type=int, default=25)
-    parser.add_argument("--size", type=int, default=200)
-    parser.add_argument("--min-area", type=int, default=200)
+    parser.add_argument("--interval-ms", type=int, default=10)
+    parser.add_argument("--size", type=int, default=400)
+    parser.add_argument("--min-area", type=int, default=400)
     parser.add_argument("--max-area", type=int, default=100000)
-    parser.add_argument("--shape-score-max", type=float, default=1.0)
-    parser.add_argument("--clahe-clip", type=float, default=64.0)
-    parser.add_argument("--clahe-tile", type=int, default=8)
-    parser.add_argument("--scan-size", type=int, default=200)
-    parser.add_argument("--track-size", type=int, default=200)
+    parser.add_argument("--shape-score-max", type=float, default=0.8)
+    parser.add_argument("--clahe-clip", type=float, default=2.0)
+    parser.add_argument("--clahe-tile", type=int, default=4)
+    parser.add_argument("--scan-size", type=int, default=400)
+    parser.add_argument("--track-size", type=int, default=400)
     parser.add_argument("--no-track", action="store_true")
     parser.add_argument("--no-fallback-scan", dest="fallback_scan", action="store_false")
-    parser.add_argument("--select-radius", type=int, default=20)
+    parser.add_argument("--select-radius", type=int, default=4)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--debug-every", type=float, default=1.0)
     parser.add_argument("--show", action="store_true")
     parser.add_argument("--show-color", action="store_true")
     parser.add_argument("--no-show-color", dest="show_color", action="store_false")
-    parser.add_argument("--color-tol", type=int, default=32)
-    parser.add_argument("--action-cooldown-ms", type=int, default=80)
+    parser.add_argument("--color-tol", type=int, default=16)
+    parser.add_argument("--action-cooldown-ms", type=int, default=50)
     parser.add_argument("--match-streak", type=int, default=2)
     parser.add_argument("--stable-px", type=int, default=2)
     parser.add_argument("--detect-fresh-ms", type=int, default=25)
+    parser.add_argument("--sample-radius", type=int, default=5)
+    parser.add_argument("--fill-ratio-tol", type=float, default=1.00)
+    parser.add_argument("--low-contrast-std", type=float, default=4.0)
     parser.add_argument("--strict-select", action="store_true")
     parser.set_defaults(fallback_scan=True)
     parser.set_defaults(show_color=True)
@@ -340,7 +366,8 @@ def main():
 
     shape_img = load_image_bgr(args.shape)
     shape_gray = cv2.cvtColor(shape_img, cv2.COLOR_BGR2GRAY)
-    template_mask = build_binary_mask(shape_gray)
+    template_mask = build_binary_mask(shape_gray, low_contrast_std=0.0)
+    template_fill_ratio = np.count_nonzero(template_mask) / float(template_mask.size)
     # 用形状模板定位，用外框颜色均值区分 ing/ed
     template_contour = extract_shape_contour(shape_gray)
     if template_contour is None:
@@ -353,24 +380,26 @@ def main():
         if key == keyboard.KeyCode.from_char("x"):
             (_, _, _, center, detected_time) = state.snapshot()
             fresh = (time.time() - detected_time) * 1000 <= args.detect_fresh_ms
-            if center is None or not fresh:
-                print("[action:x] no fresh detected shape")
+            if center is None:
+                print("[action:x] no detected shape")
+                return
+            if not fresh:
+                print("[action:x] stale detected shape, using last center")
+            recorded = state.record_current()
+            if recorded is None:
+                print("[record] no detected color to record")
             else:
-                recorded = state.record_current()
-                if recorded is None:
-                    print("[record] no detected color to record")
-                else:
-                    print(f"[record] color={list(recorded)} center={center}")
-                print(f"[action:x] press i active_window={active_window_title()}")
-                kb.press("i")
-                time.sleep(0.01)
-                kb.release("i")
-                time.sleep(0.05)
-                print(f"[action:x] move to {center}")
-                pyautogui.moveTo(center[0], center[1])
-                time.sleep(0.05)
-                print(f"[action:x] click active_window={active_window_title()}")
-                pyautogui.click()
+                print(f"[record] color={list(recorded)} center={center}")
+            print(f"[action:x] press i active_window={active_window_title()}")
+            kb.press("i")
+            time.sleep(0.01)
+            kb.release("i")
+            time.sleep(0.05)
+            print(f"[action:x] move to {center}")
+            pyautogui.moveTo(center[0], center[1])
+            time.sleep(0.05)
+            print(f"[action:x] click active_window={active_window_title()}")
+            pyautogui.click()
         if key == keyboard.KeyCode.from_char("c"):
             enabled = state.toggle_action()
             print(f"[action] enabled={enabled} active_window={active_window_title()}")
@@ -405,6 +434,7 @@ def main():
                     roi_gray,
                     args.clahe_clip,
                     args.clahe_tile,
+                    args.low_contrast_std,
                 )
                 candidates = 0
                 best_score = None
@@ -425,8 +455,10 @@ def main():
                         dist_abs = abs(dist)
                         hit = dist_abs <= args.select_radius
                     if hit:
-                        score = contour_mask_diff_ratio(contour, template_mask)
+                        score, fill_ratio = contour_mask_diff_ratio(contour, template_mask)
                         if score is None:
+                            continue
+                        if abs(fill_ratio - template_fill_ratio) > args.fill_ratio_tol:
                             continue
                         if best_score is None or score < best_score or (
                             best_score is not None and score == best_score and dist_abs < best_dist
@@ -485,7 +517,9 @@ def main():
                     [[[x, y]], [[x + w, y]], [[x + w, y + h]], [[x, y + h]]],
                     dtype=np.int32,
                 )
-                (cx, cy), bgr = read_center_color(frame, contour, offset_x, offset_y)
+                (cx, cy), bgr = read_center_color(
+                    frame, contour, offset_x, offset_y, args.sample_radius
+                )
                 state.set_last_detected(bgr, (cx, cy))
                 key = (cx, cy)
                 if key != last_selected:
