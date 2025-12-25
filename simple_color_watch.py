@@ -80,9 +80,9 @@ def set_window_topmost_no_activate(title):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--interval-ms", type=int, default=50)
-    parser.add_argument("--color-tol", type=int, default=5)
-    parser.add_argument("--cooldown-ms", type=int, default=50)
+    parser.add_argument("--interval-ms", type=int, default=100)
+    parser.add_argument("--color-tol", type=int, default=3)
+    parser.add_argument("--cooldown-ms", type=int, default=20)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--show", action="store_true")
     args = parser.parse_args()
@@ -91,7 +91,7 @@ def main():
     kb = keyboard.Controller()
 
     def on_press(key):
-        if key == keyboard.KeyCode.from_char("x"):
+        if key == keyboard.KeyCode.from_char("z"):
             recorded = state.record_current()
             if recorded is None:
                 print("[record] no current color")
@@ -103,7 +103,7 @@ def main():
             kb.release("i")
             time.sleep(0.01)
             pyautogui.click()
-        if key == keyboard.KeyCode.from_char("c"):
+        if key == keyboard.KeyCode.from_char("x"):
             enabled = state.toggle_action()
             print(f"[toggle] enabled={enabled}")
 
@@ -114,7 +114,7 @@ def main():
     last_print_bgr = None
     exit_requested = [False]
     color_window_init = False
-    exit_rect = (170, 10, 210, 40)
+    exit_rect = (90, 10, 130, 40)
     with mss.mss() as sct:
         while True:
             pos = pyautogui.position()
@@ -140,24 +140,13 @@ def main():
                     state.set_last_action_time(now)
 
             if args.show:
-                panel = np.zeros((70, 220, 3), dtype=np.uint8)
-                cur = np.array(cur_bgr or (0, 0, 0), dtype=np.uint8)
+                panel = np.zeros((70, 140, 3), dtype=np.uint8)
                 rec = np.array(rec_bgr or (0, 0, 0), dtype=np.uint8)
-                panel[:, :80] = cur
-                panel[:, 80:] = rec
-                cv2.putText(
-                    panel,
-                    "CUR",
-                    (8, 20),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (255, 255, 255),
-                    1,
-                )
+                panel[:, :] = rec
                 cv2.putText(
                     panel,
                     "REC",
-                    (88, 20),
+                    (10, 20),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.5,
                     (255, 255, 255),
@@ -167,18 +156,18 @@ def main():
                     cv2.putText(
                         panel,
                         "MATCH",
-                        (40, 60),
+                        (10, 60),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.5,
                         (0, 255, 0),
                         1,
                     )
-                status = "C:ON" if enabled else "C:OFF"
+                status = "X:ON" if enabled else "X:OFF"
                 status_color = (0, 255, 0) if enabled else (0, 0, 255)
                 cv2.putText(
                     panel,
                     status,
-                    (140, 60),
+                    (70, 60),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.5,
                     status_color,
