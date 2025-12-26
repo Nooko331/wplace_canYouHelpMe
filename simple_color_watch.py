@@ -85,6 +85,8 @@ def main():
     parser.add_argument("--cooldown-ms", type=int, default=20)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--show", action="store_true")
+    parser.add_argument("--no-show", dest="show", action="store_false")
+    parser.set_defaults(show=True)
     args = parser.parse_args()
 
     state = RuntimeState()
