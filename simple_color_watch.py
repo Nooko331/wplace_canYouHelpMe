@@ -2,6 +2,8 @@ import argparse
 import threading
 import time
 import ctypes
+import logging
+import os
 
 import cv2
 import mss
@@ -17,13 +19,16 @@ class RuntimeState:
         self.current_bgr = None
         self.current_pos = None
         self.recorded_bgr = None
+        self.recorded_bgrs = []
         self.recorded_pos = None
+        self.recorded_bgrs_raw = []
         self.action_enabled = False
         self.last_action_time = 0.0
         self.recorded_range = None
         self.auto_fill_enabled = False
         self.auto_fill_points = []
         self.auto_fill_index = 0
+        self.auto_fill_primed = False
 
     def update_current(self, bgr, pos):
         with self.lock:
@@ -35,8 +40,33 @@ class RuntimeState:
             if self.current_bgr is None:
                 return None
             self.recorded_bgr = self.current_bgr
+            self.recorded_bgrs = [self.current_bgr]
+            self.recorded_bgrs_raw = [self.current_bgr]
             self.recorded_pos = self.current_pos
             return self.recorded_bgr
+
+    def set_recorded(self, bgr, pos):
+        with self.lock:
+            self.recorded_bgr = bgr
+            self.recorded_bgrs = [bgr]
+            self.recorded_bgrs_raw = [bgr]
+            self.recorded_pos = pos
+            return self.recorded_bgr
+
+    def set_recorded_multi(self, bgrs, pos):
+        with self.lock:
+            self.recorded_bgrs = list(bgrs)
+            self.recorded_bgr = self.recorded_bgrs[0] if self.recorded_bgrs else None
+            self.recorded_pos = pos
+            return self.recorded_bgrs
+
+    def set_recorded_multi_with_raw(self, bgrs_raw, bgrs_match, pos):
+        with self.lock:
+            self.recorded_bgrs = list(bgrs_match)
+            self.recorded_bgr = self.recorded_bgrs[0] if self.recorded_bgrs else None
+            self.recorded_pos = pos
+            self.recorded_bgrs_raw = list(bgrs_raw)
+            return self.recorded_bgrs
 
     def toggle_action(self):
         with self.lock:
@@ -53,6 +83,14 @@ class RuntimeState:
             if not self.auto_fill_enabled:
                 self.auto_fill_points = []
                 self.auto_fill_index = 0
+                self.auto_fill_primed = False
+            return self.auto_fill_enabled
+
+    def start_auto_fill(self):
+        with self.lock:
+            self.auto_fill_enabled = True
+            self.auto_fill_index = 0
+            self.auto_fill_primed = False
             return self.auto_fill_enabled
 
     def stop_all(self):
@@ -61,21 +99,33 @@ class RuntimeState:
             self.auto_fill_enabled = False
             self.auto_fill_points = []
             self.auto_fill_index = 0
+            self.auto_fill_primed = False
 
     def set_auto_fill_points(self, points):
         with self.lock:
             self.auto_fill_points = points
             self.auto_fill_index = 0
+            self.auto_fill_primed = False
 
     def next_auto_fill_point(self):
         with self.lock:
             if not self.auto_fill_points:
+                self.auto_fill_enabled = False
                 return None
             if self.auto_fill_index >= len(self.auto_fill_points):
+                self.auto_fill_enabled = False
                 return None
             pt = self.auto_fill_points[self.auto_fill_index]
             self.auto_fill_index += 1
             return pt
+
+    def is_auto_fill_primed(self):
+        with self.lock:
+            return self.auto_fill_primed
+
+    def set_auto_fill_primed(self):
+        with self.lock:
+            self.auto_fill_primed = True
 
     def snapshot(self):
         with self.lock:
@@ -84,17 +134,53 @@ class RuntimeState:
                 self.current_pos,
                 self.recorded_bgr,
                 self.recorded_pos,
+                list(self.recorded_bgrs),
                 self.action_enabled,
                 self.last_action_time,
                 self.recorded_range,
                 self.auto_fill_enabled,
                 list(self.auto_fill_points),
                 self.auto_fill_index,
+                list(self.recorded_bgrs_raw),
             )
 
     def set_last_action_time(self, ts):
         with self.lock:
             self.last_action_time = ts
+
+
+LOGGER = logging.getLogger("color_watch")
+DEBUG_ENABLED = False
+
+
+def log_debug(msg):
+    if DEBUG_ENABLED:
+        LOGGER.debug(msg)
+
+
+def build_srgb_lut():
+    vals = np.arange(256, dtype=np.float32) / 255.0
+    linear = np.where(
+        vals <= 0.04045,
+        vals / 12.92,
+        ((vals + 0.055) / 1.055) ** 2.4,
+    )
+    return np.round(linear * 255.0).astype(np.int16)
+
+
+SRGB_LUT = build_srgb_lut()
+
+
+def apply_srgb_lut(bgr):
+    return (
+        int(SRGB_LUT[bgr[0]]),
+        int(SRGB_LUT[bgr[1]]),
+        int(SRGB_LUT[bgr[2]]),
+    )
+
+
+def bgr_to_rgb(bgr):
+    return (int(bgr[2]), int(bgr[1]), int(bgr[0]))
 
 
 def set_dpi_awareness():
@@ -108,6 +194,17 @@ def set_dpi_awareness():
 
 
 def grab_pixel(mss_instance, x, y):
+    monitor = {"left": int(x), "top": int(y), "width": 1, "height": 1}
+    frame = mss_instance.grab(monitor)
+    px = frame.pixel(0, 0)
+    if len(px) == 4:
+        b, g, r, _ = px
+    else:
+        b, g, r = px
+    return (int(b), int(g), int(r))
+
+
+def grab_pixel_raw(mss_instance, x, y):
     monitor = {"left": int(x), "top": int(y), "width": 1, "height": 1}
     frame = mss_instance.grab(monitor)
     px = frame.pixel(0, 0)
@@ -138,9 +235,10 @@ def select_range(sct, cursor_pos=None, debug=False):
     result = {"rect": None}
     start = {"pos": None}
     rect_id = {"id": None}
+
     def log(msg):
         if debug:
-            print(msg)
+            log_debug(msg)
 
     monitors = sct.monitors[1:] or [sct.monitors[0]]
     if cursor_pos is None:
@@ -177,7 +275,7 @@ def select_range(sct, cursor_pos=None, debug=False):
             rect_id["id"] = None
 
     def on_drag(event):
-        log(f"[range] drag ({event.x},{event.y})")
+        # log(f"[range] drag ({event.x},{event.y})")
         if not start["pos"]:
             return
         x1, y1 = start["pos"]
@@ -244,43 +342,83 @@ def select_range(sct, cursor_pos=None, debug=False):
     return result["rect"]
 
 
-def scan_matching_points(sct, rect, bgr, tol, step, debug=False, ref_pos=None):
+def is_point_in_rect(pos, rect):
+    if rect is None:
+        return False
+    x, y = pos
+    left, top, right, bottom = rect
+    return left <= x <= right and top <= y <= bottom
+
+
+def pick_safe_pos(monitors, avoid_rect, padding=5):
+    for mon in monitors:
+        left = mon["left"]
+        top = mon["top"]
+        right = mon["left"] + mon["width"] - 1
+        bottom = mon["top"] + mon["height"] - 1
+        candidates = [
+            (left + padding, top + padding),
+            (right - padding, top + padding),
+            (left + padding, bottom - padding),
+            (right - padding, bottom - padding),
+        ]
+        for x, y in candidates:
+            if not is_point_in_rect((x, y), avoid_rect):
+                return (x, y)
+    return None
+
+
+def scan_matching_points(
+    sct, rect, bgrs, tol, step, debug=False, ref_pos=None, probe_pos=None
+):
     left, top, right, bottom = rect
     width = max(1, right - left + 1)
     height = max(1, bottom - top + 1)
-    monitor = {"left": int(left), "top": int(top), "width": int(width), "height": int(height)}
-    shot = sct.grab(monitor)
-    img = np.array(shot)[:, :, :3]
-    target = np.array(bgr, dtype=np.int16)
-    sample = img[::step, ::step, :].astype(np.int16)
-    diff = np.abs(sample - target)
-    match = np.max(diff, axis=2) <= tol
-    ys, xs = np.where(match)
     points = []
-    for y, x in zip(ys, xs):
-        points.append((left + int(x * step), top + int(y * step)))
+    matches_with_color = []
+    diff_min_global = None
+    diff_max_global = None
+    diff_sum = 0
+    diff_count = 0
+
+    if debug and probe_pos is not None:
+        if left <= probe_pos[0] <= right and top <= probe_pos[1] <= bottom:
+            probe_bgr = grab_pixel(sct, probe_pos[0], probe_pos[1])
+            diffs = []
+            for rbgr in bgrs:
+                diffs.append([abs(a - b) for a, b in zip(probe_bgr, rbgr)])
+            log_debug(
+                f"[scan] probe pos={probe_pos} "
+                f"bgr_rgb={list(bgr_to_rgb(probe_bgr))} diffs={diffs}"
+            )
+
+    for y in range(0, height, step):
+        for x in range(0, width, step):
+            px = (left + x, top + y)
+            bgr = grab_pixel(sct, px[0], px[1])
+            max_diffs = []
+            for rbgr in bgrs:
+                diff = [abs(a - b) for a, b in zip(bgr, rbgr)]
+                max_diffs.append(max(diff))
+            min_diff = min(max_diffs) if max_diffs else 0
+            diff_sum += min_diff
+            diff_count += 1
+            if diff_min_global is None or min_diff < diff_min_global:
+                diff_min_global = min_diff
+            if diff_max_global is None or min_diff > diff_max_global:
+                diff_max_global = min_diff
+            if min_diff <= tol:
+                points.append(px)
+                if debug:
+                    matches_with_color.append((px[0], px[1], list(bgr_to_rgb(bgr))))
+
     if debug:
-        diff_max = np.max(diff, axis=2)
-        min_diff = int(np.min(diff_max))
-        print(
-            f"[scan] size=({width}x{height}) step={step} tol={tol} "
-            f"matches={len(points)} min_diff={min_diff}"
+        avg_diff = (diff_sum / diff_count) if diff_count else -1
+        log_debug(
+            f"[scan] step_used={step} matches={len(points)} "
+            f"min_diff={diff_min_global} max_diff={diff_max_global} "
+            f"avg_diff={avg_diff:.2f} matches_with_color={matches_with_color}"
         )
-        if ref_pos is not None:
-            rx = int(ref_pos[0]) - left
-            ry = int(ref_pos[1]) - top
-            if 0 <= rx < img.shape[1] and 0 <= ry < img.shape[0]:
-                ref_bgr = img[ry, rx].tolist()
-                diffs = [abs(a - b) for a, b in zip(ref_bgr, bgr)]
-                print(
-                    f"[scan] ref_pos=({ref_pos[0]},{ref_pos[1]}) "
-                    f"bgr={ref_bgr} diff={diffs}"
-                )
-            else:
-                print(
-                    f"[scan] ref_pos=({ref_pos[0]},{ref_pos[1]}) "
-                    "outside rect (ok)"
-                )
     return points
 
 
@@ -288,13 +426,31 @@ def main():
     set_dpi_awareness()
     parser = argparse.ArgumentParser()
     parser.add_argument("--interval-ms", type=int, default=100)
-    parser.add_argument("--color-tol", type=int, default=3)
+    parser.add_argument("--color-tol", type=int, default=0)
     parser.add_argument("--cooldown-ms", type=int, default=20)
+    parser.add_argument("--probe-x", type=int, default=None)
+    parser.add_argument("--probe-y", type=int, default=None)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--show", action="store_true")
     parser.add_argument("--no-show", dest="show", action="store_false")
     parser.set_defaults(show=True)
     args = parser.parse_args()
+
+    global DEBUG_ENABLED
+    if args.debug:
+        LOGGER.setLevel(logging.DEBUG)
+        formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+        if not LOGGER.handlers:
+            file_handler = logging.FileHandler(
+                "simple_color_watch.log", encoding="utf-8"
+            )
+            file_handler.setFormatter(formatter)
+            stream_handler = logging.StreamHandler()
+            stream_handler.setFormatter(formatter)
+            LOGGER.addHandler(file_handler)
+            LOGGER.addHandler(stream_handler)
+        LOGGER.propagate = False
+        DEBUG_ENABLED = True
 
     state = RuntimeState()
     kb = keyboard.Controller()
@@ -305,12 +461,31 @@ def main():
             print("[stop] action/auto_fill disabled")
             return
         if key == keyboard.KeyCode.from_char("z"):
-            recorded = state.record_current()
-            if recorded is None:
-                print("[record] no current color")
-            else:
-                (_, pos, _, _, _, _, _, _, _, _) = state.snapshot()
-                print(f"[record] color={list(recorded)} pos={pos}")
+            pos = pyautogui.position()
+            with mss.mss() as sct_local:
+                bgr_hover_raw = grab_pixel_raw(sct_local, pos.x, pos.y)
+                safe = pick_safe_pos(
+                    sct_local.monitors[1:], (pos.x, pos.y, pos.x, pos.y)
+                )
+                moved = False
+                if safe is not None:
+                    pyautogui.moveTo(safe[0], safe[1])
+                    time.sleep(0.03)
+                    moved = True
+                bgr_clear_raw = grab_pixel_raw(sct_local, pos.x, pos.y)
+                recorded = state.set_recorded_multi_with_raw(
+                    [bgr_hover_raw, bgr_clear_raw],
+                    [bgr_hover_raw, bgr_clear_raw],
+                    (pos.x, pos.y),
+                )
+                if moved:
+                    pyautogui.moveTo(pos.x, pos.y)
+                print(
+                    f"[record] raw_colors_rgb={list(bgr_to_rgb(bgr_hover_raw))},"
+                    f"{list(bgr_to_rgb(bgr_clear_raw))} "
+                    f"match_colors_rgb={list(bgr_to_rgb(recorded[0]))},"
+                    f"{list(bgr_to_rgb(recorded[1]))} pos={(pos.x, pos.y)}"
+                )
             kb.press("i")
             time.sleep(0.01)
             kb.release("i")
@@ -319,6 +494,7 @@ def main():
         if key == keyboard.KeyCode.from_char("x"):
             enabled = state.toggle_action()
             print(f"[toggle] enabled={enabled}")
+
     listener = keyboard.Listener(on_press=on_press)
     listener.daemon = True
     listener.start()
@@ -337,7 +513,7 @@ def main():
             state.update_current(bgr, (pos.x, pos.y))
 
             if args.debug and bgr != last_print_bgr:
-                print(f"[color] pos=({pos.x},{pos.y}) bgr={bgr}")
+                # log_debug(f"[color] pos=({pos.x},{pos.y}) bgr={bgr}")
                 last_print_bgr = bgr
 
             (
@@ -345,17 +521,22 @@ def main():
                 _,
                 rec_bgr,
                 rec_pos,
+                rec_bgrs,
                 enabled,
                 last_action_time,
                 recorded_range,
                 auto_fill_enabled,
                 auto_fill_points,
                 _,
+                rec_bgrs_raw,
             ) = state.snapshot()
             match = False
-            if cur_bgr is not None and rec_bgr is not None:
-                diffs = [abs(a - b) for a, b in zip(cur_bgr, rec_bgr)]
-                match = max(diffs) <= args.color_tol
+            if cur_bgr is not None and rec_bgrs:
+                for rbgr in rec_bgrs:
+                    diffs = [abs(a - b) for a, b in zip(cur_bgr, rbgr)]
+                    if max(diffs) <= args.color_tol:
+                        match = True
+                        break
 
             if enabled and match:
                 now = time.time()
@@ -365,21 +546,39 @@ def main():
                     kb.release(keyboard.Key.space)
                     state.set_last_action_time(now)
 
-            if auto_fill_enabled and recorded_range and rec_bgr is not None:
+            if auto_fill_enabled and recorded_range and rec_bgrs:
                 now = time.time()
                 if (now - last_action_time) * 1000 >= args.cooldown_ms:
                     pt = state.next_auto_fill_point()
                     if pt is not None:
+                        if args.debug:
+                            log_debug(f"[auto_fill] fire pt={pt}")
                         pyautogui.moveTo(pt[0], pt[1])
+                        if not state.is_auto_fill_primed():
+                            pyautogui.click()
+                            state.set_auto_fill_primed()
                         kb.press(keyboard.Key.space)
                         time.sleep(0.01)
                         kb.release(keyboard.Key.space)
                         state.set_last_action_time(now)
+                    elif args.debug:
+                        log_debug("[auto_fill] no points to fire")
+                elif args.debug:
+                    remaining = args.cooldown_ms - (now - last_action_time) * 1000
+                    log_debug(f"[auto_fill] cooldown remaining={remaining:.1f}ms")
 
             if args.show:
                 panel = np.zeros((90, 140, 3), dtype=np.uint8)
-                rec = np.array(rec_bgr or (0, 0, 0), dtype=np.uint8)
-                panel[:, :] = rec
+                left_color = (0, 0, 0)
+                right_color = (0, 0, 0)
+                if rec_bgrs_raw:
+                    left_color = bgr_to_rgb(rec_bgrs_raw[0])
+                    if len(rec_bgrs_raw) > 1:
+                        right_color = bgr_to_rgb(rec_bgrs_raw[1])
+                    else:
+                        right_color = bgr_to_rgb(rec_bgrs_raw[0])
+                panel[:, :70] = np.array(left_color, dtype=np.uint8)
+                panel[:, 70:] = np.array(right_color, dtype=np.uint8)
                 cv2.putText(
                     panel,
                     "REC",
@@ -462,47 +661,77 @@ def main():
                     def on_color_click(event, x, y, flags, param):
                         if event == cv2.EVENT_LBUTTONDOWN:
                             if args.debug:
-                                print(f"[ui] click pos=({x},{y})")
+                                log_debug(f"[ui] click pos=({x},{y})")
                             if x1 <= x <= x2 and y1 <= y <= y2:
                                 if args.debug:
-                                    print("[ui] exit clicked")
+                                    log_debug("[ui] exit clicked")
                                 exit_requested[0] = True
                             if rx1 <= x <= rx2 and ry1 <= y <= ry2:
                                 if args.debug:
-                                    print("[ui] range clicked")
+                                    log_debug("[ui] range clicked")
                                 request_select_range[0] = True
                             if fx1 <= x <= fx2 and fy1 <= y <= fy2:
-                                enabled_fill = state.toggle_auto_fill()
+                                enabled_fill = state.start_auto_fill()
                                 if enabled_fill:
                                     (
                                         _,
                                         _,
                                         rec_bgr_now,
                                         rec_pos_now,
+                                        rec_bgrs_now,
                                         _,
                                         _,
                                         recorded_range_now,
                                         _,
                                         _,
                                         _,
+                                        _,
                                     ) = state.snapshot()
-                                    if not recorded_range_now or rec_bgr_now is None:
-                                        state.toggle_auto_fill()
+                                    if not recorded_range_now or not rec_bgrs_now:
+                                        state.stop_all()
                                         print("[auto_fill] missing range or color")
                                     else:
+                                        original_pos = pyautogui.position()
+                                        moved = False
+                                        if is_point_in_rect(
+                                            (original_pos.x, original_pos.y),
+                                            recorded_range_now,
+                                        ):
+                                            safe_pos = pick_safe_pos(
+                                                sct.monitors[1:], recorded_range_now
+                                            )
+                                            if safe_pos is not None:
+                                                pyautogui.moveTo(
+                                                    safe_pos[0], safe_pos[1]
+                                                )
+                                                time.sleep(0.03)
+                                                moved = True
                                         points = scan_matching_points(
                                             sct,
                                             recorded_range_now,
-                                            rec_bgr_now,
+                                            rec_bgrs_now,
                                             args.color_tol,
-                                            step=3,
+                                            step=10,
                                             debug=args.debug,
                                             ref_pos=rec_pos_now,
+                                            probe_pos=(
+                                                (
+                                                    args.probe_x,
+                                                    args.probe_y,
+                                                )
+                                                if args.probe_x is not None
+                                                and args.probe_y is not None
+                                                else None
+                                            ),
                                         )
+                                        if moved:
+                                            pyautogui.moveTo(
+                                                original_pos.x, original_pos.y
+                                            )
                                         state.set_auto_fill_points(points)
-                                        print(f"[auto_fill] enabled points={len(points)}")
-                                else:
-                                    print(f"[auto_fill] enabled={enabled_fill}")
+                                        print(
+                                            f"[auto_fill] enabled points={len(points)}"
+                                        )
 
                     cv2.setMouseCallback("color_status", on_color_click)
                     color_window_init = True
