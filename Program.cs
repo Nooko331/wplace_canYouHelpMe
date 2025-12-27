@@ -8,6 +8,22 @@ static class Program
     [STAThread]
     static void Main(string[] args)
     {
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            Logger.Debug($"[fatal] unhandled exception: {e.ExceptionObject}");
+            Logger.Shutdown();
+        };
+        Application.ThreadException += (_, e) =>
+        {
+            Logger.Debug($"[fatal] ui exception: {e.Exception}");
+            Logger.Shutdown();
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            Logger.Debug($"[fatal] task exception: {e.Exception}");
+            Logger.Shutdown();
+        };
+
         try
         {
             NativeMethods.SetProcessDpiAwareness(2);
@@ -29,6 +45,7 @@ static class Program
         var options = ParseArgs(args);
         Logger.Init(options.Debug);
         Application.Run(new Form1(options));
+        Logger.Shutdown();
     }    
 
     private static Options ParseArgs(string[] args)

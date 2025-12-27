@@ -34,6 +34,15 @@ public static class Logger
         Write("DEBUG", message);
     }
 
+    public static void Shutdown()
+    {
+        lock (LockObj)
+        {
+            _writer?.Dispose();
+            _writer = null;
+        }
+    }
+
     private static void Write(string level, string message)
     {
         var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {level} {message}";

@@ -55,7 +55,7 @@ public partial class Form1 : Form
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
         base.OnFormClosing(e);
-        Unhook();
+        CleanupResources();
     }
 
     private void SetTopMostNoActivate()
@@ -227,12 +227,17 @@ public partial class Form1 : Form
                 _state.SetAutoFillPoints(points);
                 Logger.Debug($"[auto_fill] enabled points={points.Count}");
             }
+            catch (Exception ex)
+            {
+                Logger.Debug($"[scan] failed: {ex}");
+            }
             finally
             {
                 BeginInvoke(() =>
                 {
                     btnFill.Enabled = true;
-                    _scanCts = null;
+                    var cts = Interlocked.Exchange(ref _scanCts, null);
+                    cts?.Dispose();
                 });
             }
         }, token);
@@ -492,7 +497,12 @@ public partial class Form1 : Form
 
     private void CancelScan()
     {
-        _scanCts?.Cancel();
+        var cts = Interlocked.Exchange(ref _scanCts, null);
+        if (cts != null)
+        {
+            cts.Cancel();
+            cts.Dispose();
+        }
     }
 
     private static BgrColor GetPixelAt(int x, int y)
@@ -503,7 +513,6 @@ public partial class Form1 : Form
 
     private sealed class ScanStats
     {
-        public ScreenDc? Dc;
         public int Min = int.MaxValue;
         public int Max = 0;
         public long Sum = 0;
@@ -621,6 +630,12 @@ public partial class Form1 : Form
             NativeMethods.UnhookWindowsHookEx(_hookId);
             _hookId = IntPtr.Zero;
         }
+    }
+
+    private void CleanupResources()
+    {
+        CancelScan();
+        Unhook();
     }
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
