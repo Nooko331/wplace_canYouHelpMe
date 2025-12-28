@@ -8,8 +8,8 @@ internal static class NativeMethods
     public const int WH_KEYBOARD_LL = 13;
     public const int WM_KEYDOWN = 0x0100;
     public const int VK_ESCAPE = 0x1B;
-    public const int VK_X = 0x58;
-    public const int VK_Z = 0x5A;
+    public const int VK_S = 0x53;
+    public const int VK_A = 0x41;
     public const int VK_I = 0x49;
 
     public const int INPUT_KEYBOARD = 1;

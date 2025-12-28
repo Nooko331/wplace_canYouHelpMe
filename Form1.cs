@@ -160,7 +160,7 @@ public partial class Form1 : Form
                 : snapshot.recordedBgrsRaw[0].ToColor();
         }
         labelMatch.Visible = match;
-        labelX.Text = snapshot.actionEnabled ? "X:ON" : "X:OFF";
+        labelX.Text = snapshot.actionEnabled ? "S:ON" : "S:OFF";
         labelX.ForeColor = snapshot.actionEnabled ? Color.Green : Color.Red;
         labelRange.Text = snapshot.recordedRange.HasValue ? "R:OK" : "R:--";
 
@@ -651,7 +651,7 @@ public partial class Form1 : Form
                     CancelScan();
                 });
             }
-            else if (vkCode == NativeMethods.VK_X)
+            else if (vkCode == NativeMethods.VK_S)
             {
                 BeginInvoke(() =>
                 {
@@ -659,7 +659,7 @@ public partial class Form1 : Form
                     Logger.Debug($"[toggle] enabled={enabled}");
                 });
             }
-            else if (vkCode == NativeMethods.VK_Z)
+            else if (vkCode == NativeMethods.VK_A)
             {
                 BeginInvoke(() => RecordColors());
             }

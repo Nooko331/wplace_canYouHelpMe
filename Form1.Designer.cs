@@ -107,7 +107,7 @@ partial class Form1
         this.labelX.Location = new System.Drawing.Point(120, 214);
         this.labelX.Name = "labelX";
         this.labelX.Size = new System.Drawing.Size(38, 15);
-        this.labelX.Text = "X:OFF";
+        this.labelX.Text = "S:OFF";
         this.labelX.ForeColor = System.Drawing.Color.Red;
         // 
         // labelRange
