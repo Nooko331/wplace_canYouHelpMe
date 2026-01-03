@@ -1,4 +1,5 @@
-namespace WplaceColorWatch;
+﻿namespace WplaceColorWatch
+{
 
 public sealed class Options
 {
@@ -12,3 +13,5 @@ public sealed class Options
     public int? ProbeX { get; set; }
     public int? ProbeY { get; set; }
 }
+}
+

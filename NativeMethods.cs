@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 
-namespace WplaceColorWatch;
+namespace WplaceColorWatch
+{
 
 internal static class NativeMethods
 {
@@ -134,3 +135,5 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 }
+}
+

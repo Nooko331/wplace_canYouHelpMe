@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using System.Drawing;
 
-namespace WplaceColorWatch;
+namespace WplaceColorWatch
+{
 
 public readonly struct BgrColor
 {
@@ -39,3 +40,5 @@ public readonly struct BgrColor
         return new[] { (int)R, (int)G, (int)B };
     }
 }
+}
+

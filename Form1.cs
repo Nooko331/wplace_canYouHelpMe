@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
@@ -8,7 +8,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-namespace WplaceColorWatch;
+namespace WplaceColorWatch
+{
 
 public partial class Form1 : Form
 {
@@ -162,7 +163,7 @@ public partial class Form1 : Form
         labelMatch.Visible = match;
         labelX.Text = snapshot.actionEnabled ? "S:ON" : "S:OFF";
         labelX.ForeColor = snapshot.actionEnabled ? Color.Green : Color.Red;
-        labelRange.Text = snapshot.recordedRange.HasValue ? "R:OK" : "R:--";
+        RangeRecord.Text = snapshot.recordedRange.HasValue ? "R:OK" : "R:--";
 
         var scanTotal = Math.Max(1, snapshot.scanTotal);
         progressScan.Maximum = scanTotal;
@@ -233,12 +234,12 @@ public partial class Form1 : Form
             }
             finally
             {
-                BeginInvoke(() =>
+                BeginInvoke((Action)(() =>
                 {
                     btnFill.Enabled = true;
                     var cts = Interlocked.Exchange(ref _scanCts, null);
                     cts?.Dispose();
-                });
+                }));
             }
         }, token);
     }
@@ -645,23 +646,23 @@ public partial class Form1 : Form
             int vkCode = Marshal.ReadInt32(lParam);
             if (vkCode == NativeMethods.VK_ESCAPE)
             {
-                BeginInvoke(() =>
+                BeginInvoke((Action)(() =>
                 {
                     _state.StopAll();
                     CancelScan();
-                });
+                }));
             }
             else if (vkCode == NativeMethods.VK_S)
             {
-                BeginInvoke(() =>
+                BeginInvoke((Action)(() =>
                 {
                     bool enabled = _state.ToggleAction();
                     Logger.Debug($"[toggle] enabled={enabled}");
-                });
+                }));
             }
             else if (vkCode == NativeMethods.VK_A)
             {
-                BeginInvoke(() => RecordColors());
+                BeginInvoke((Action)(() => RecordColors()));
             }
         }
         return NativeMethods.CallNextHookEx(_hookId, nCode, wParam, lParam);
@@ -718,4 +719,26 @@ public partial class Form1 : Form
             Thread.Sleep(_options.ActionDelayMs);
         }
     }
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+
+        }
+
+        private void btnRange_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void label3_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void labelMatchProgress_Click(object sender, EventArgs e)
+        {
+
+        }
+    }
 }
+

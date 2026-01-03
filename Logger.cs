@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using System.IO;
 
-namespace WplaceColorWatch;
+namespace WplaceColorWatch
+{
 
 public static class Logger
 {
@@ -60,3 +61,5 @@ public static class Logger
         }
     }
 }
+}
+

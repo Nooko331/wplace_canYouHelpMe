@@ -1,6 +1,7 @@
-using System;
+﻿using System;
 
-namespace WplaceColorWatch;
+namespace WplaceColorWatch
+{
 
 public sealed class ScreenDc : IDisposable
 {
@@ -29,3 +30,5 @@ public sealed class ScreenDc : IDisposable
         }
     }
 }
+}
+

@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace WplaceColorWatch;
+namespace WplaceColorWatch
+{
 
 public sealed class SelectionForm : Form
 {
@@ -126,3 +127,5 @@ public sealed class SelectionForm : Form
         }
     }
 }
+}
+

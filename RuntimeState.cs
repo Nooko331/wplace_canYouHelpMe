@@ -1,7 +1,8 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Drawing;
 
-namespace WplaceColorWatch;
+namespace WplaceColorWatch
+{
 
 public sealed class RuntimeState
 {
@@ -171,3 +172,5 @@ public sealed class RuntimeState
         }
     }
 }
+}
+
