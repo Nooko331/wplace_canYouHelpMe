@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,11 +19,16 @@ public partial class Form1 : Form
     private IntPtr _hookId = IntPtr.Zero;
     private NativeMethods.LowLevelKeyboardProc? _hookProc;
     private CancellationTokenSource? _scanCts;
+    private long _lastMatchDebugTicks;
+    private bool _lastMatch;
 
     public Form1(Options options)
     {
         _options = options;
         InitializeComponent();
+        MaximizeBox = false;
+        KeyPreview = true;
+        TrySetEnglishInputLanguage();
         labelRec.Parent = panelLeft;
         labelRec.Location = new Point(4, 4);
         labelRec.BackColor = Color.Transparent;
@@ -34,6 +40,7 @@ public partial class Form1 : Form
         btnFill.Click += (_, _) => BeginFill();
         btnAutoCores.Click += (_, _) => AutoDetectCores();
         textCores.Text = _options.ScanWorkers.ToString();
+        ScanStep.Text = _options.ScanStep.ToString();
 
         SetHook();
         Shown += (_, _) => SetTopMostNoActivate();
@@ -59,6 +66,31 @@ public partial class Form1 : Form
         CleanupResources();
     }
 
+    protected override void WndProc(ref Message m)
+    {
+        const int WM_SYSCOMMAND = 0x0112;
+        const int SC_MAXIMIZE = 0xF030;
+        const int WM_NCLBUTTONDBLCLK = 0x00A3;
+        if (m.Msg == WM_NCLBUTTONDBLCLK)
+        {
+            return;
+        }
+        if (m.Msg == WM_SYSCOMMAND && (m.WParam.ToInt32() & 0xFFF0) == SC_MAXIMIZE)
+        {
+            return;
+        }
+        base.WndProc(ref m);
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (keyData == Keys.F11)
+        {
+            return true;
+        }
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
     private void SetTopMostNoActivate()
     {
         NativeMethods.SetWindowPos(
@@ -78,20 +110,46 @@ public partial class Form1 : Form
         _state.UpdateCurrent(bgr, pos);
 
         var snapshot = _state.Snapshot();
+        // 目前S键自动滑动检测精度极其不准确，暂时关闭
         bool match = false;
-        foreach (var rbgr in snapshot.recordedBgrs)
-        {
-            if (snapshot.currentBgr.HasValue && snapshot.currentBgr.Value.MaxDiff(rbgr) <= _options.ColorTol)
-            {
-                match = true;
-                break;
-            }
-        }
+        // bool isOverSelf = IsCursorOverSelf(pos);
+        // int minDiff = int.MaxValue;
+        // int bestIndex = -1;
+        // if (!isOverSelf && snapshot.currentBgr.HasValue && snapshot.recordedBgrs.Count > 0)
+        // {
+        //     var current = snapshot.currentBgr.Value;
+        //     for (int i = 0; i < snapshot.recordedBgrs.Count; i++)
+        //     {
+        //         var rbgr = snapshot.recordedBgrs[i];
+        //         int diff = current.MaxDiff(rbgr);
+        //         if (diff < minDiff)
+        //         {
+        //             minDiff = diff;
+        //             bestIndex = i;
+        //         }
+        //     }
+        //     match = minDiff <= _options.ColorTol;
+        // }
 
-        if (snapshot.actionEnabled && match)
-        {
-            TryFireSpace();
-        }
+        // if (_options.Debug && snapshot.actionEnabled && snapshot.currentBgr.HasValue && snapshot.recordedBgrs.Count > 0)
+        // {
+        //     var now = Environment.TickCount64;
+        //     bool stateChanged = match != _lastMatch;
+        //     if (stateChanged || now - _lastMatchDebugTicks >= 1000)
+        //     {
+        //         var current = snapshot.currentBgr.Value;
+        //         var best = bestIndex >= 0 ? FormatBgr(snapshot.recordedBgrs[bestIndex]) : "n/a";
+        //         var minText = bestIndex >= 0 ? minDiff.ToString() : "n/a";
+        //         Logger.Debug($"[match] enabled={snapshot.actionEnabled} self={isOverSelf} match={match} tol={_options.ColorTol} min_diff={minText} current={FormatBgr(current)} best={best} colors={FormatBgrs(snapshot.recordedBgrs)}");
+        //         _lastMatchDebugTicks = now;
+        //         _lastMatch = match;
+        //     }
+        // }
+
+        // if (snapshot.actionEnabled && match)
+        // {
+        //     TryFireSpace();
+        // }
 
         if (snapshot.autoFillEnabled && snapshot.autoFillReady && snapshot.recordedRange.HasValue && snapshot.recordedBgrs.Count > 0)
         {
@@ -159,10 +217,20 @@ public partial class Form1 : Form
             panelRight.BackColor = snapshot.recordedBgrsRaw.Count > 1
                 ? snapshot.recordedBgrsRaw[1].ToColor()
                 : snapshot.recordedBgrsRaw[0].ToColor();
+            var left = snapshot.recordedBgrsRaw[0];
+            var right = snapshot.recordedBgrsRaw.Count > 1 ? snapshot.recordedBgrsRaw[1] : left;
+            color1.Text = $"RGB: {left.R},{left.G},{left.B}";
+            color2.Text = $"RGB: {right.R},{right.G},{right.B}";
         }
-        labelMatch.Visible = match;
-        labelX.Text = snapshot.actionEnabled ? "S:ON" : "S:OFF";
-        labelX.ForeColor = snapshot.actionEnabled ? Color.Green : Color.Red;
+        else
+        {
+            color1.Text = "当前记录颜色1";
+            color2.Text = "当前记录颜色2";
+        }
+        // 目前S键自动滑动检测精度极其不准确，暂时关闭
+        // labelMatch.Visible = match;
+        // labelX.Text = snapshot.actionEnabled ? "S:ON" : "S:OFF";
+        // labelX.ForeColor = snapshot.actionEnabled ? Color.Green : Color.Red;
         if (snapshot.recordedRange.HasValue)
         {
             RangeRecord.ForeColor = Color.Green;
@@ -188,8 +256,59 @@ public partial class Form1 : Form
         labelMatchValue.Text = $"{snapshot.autoFillIndex} / {snapshot.autoFillPointsCount}";
     }
 
+    private void TrySetEnglishInputLanguage()
+    {
+        var target = InputLanguage.InstalledInputLanguages
+            .Cast<InputLanguage>()
+            .FirstOrDefault(lang => string.Equals(lang.Culture.Name, "en-US", StringComparison.OrdinalIgnoreCase))
+            ?? InputLanguage.InstalledInputLanguages
+                .Cast<InputLanguage>()
+                .FirstOrDefault(lang => string.Equals(lang.Culture.TwoLetterISOLanguageName, "en", StringComparison.OrdinalIgnoreCase));
+        if (target != null)
+        {
+            InputLanguage.CurrentInputLanguage = target;
+            if (_options.Debug)
+            {
+                Logger.Debug($"[ime] set input lang={target.Culture.Name}");
+            }
+        }
+        else if (_options.Debug)
+        {
+            Logger.Debug("[ime] no English input language installed");
+        }
+    }
+
+    private static string FormatBgr(BgrColor bgr)
+    {
+        return $"{bgr.R},{bgr.G},{bgr.B}";
+    }
+
+    private static string FormatBgrs(List<BgrColor> bgrs)
+    {
+        if (bgrs.Count == 0)
+        {
+            return "[]";
+        }
+        var parts = new string[bgrs.Count];
+        for (int i = 0; i < bgrs.Count; i++)
+        {
+            parts[i] = FormatBgr(bgrs[i]);
+        }
+        return $"[{string.Join(" | ", parts)}]";
+    }
+
+    private bool IsCursorOverSelf(Point pos)
+    {
+        return Bounds.Contains(pos);
+    }
+
     private void BeginRangeSelect()
     {
+        _options.ScanStep = ReadScanStep();
+        if (ScanStep.Text != _options.ScanStep.ToString())
+        {
+            ScanStep.Text = _options.ScanStep.ToString();
+        }
         var screen = Screen.FromPoint(Cursor.Position);
         using var sel = new SelectionForm(screen.Bounds, _options.ScanStep);
         sel.ShowDialog(this);
@@ -205,6 +324,11 @@ public partial class Form1 : Form
         if (!btnFill.Enabled)
         {
             return;
+        }
+        _options.ScanStep = ReadScanStep();
+        if (ScanStep.Text != _options.ScanStep.ToString())
+        {
+            ScanStep.Text = _options.ScanStep.ToString();
         }
         var snapshot = _state.Snapshot();
         if (!snapshot.recordedRange.HasValue || snapshot.recordedBgrs.Count == 0)
@@ -497,6 +621,15 @@ public partial class Form1 : Form
         return maxWorkers;
     }
 
+    private int ReadScanStep()
+    {
+        if (int.TryParse(ScanStep.Text, out var value) && value > 0)
+        {
+            return value;
+        }
+        return Math.Max(1, _options.ScanStep);
+    }
+
     private void AutoDetectCores()
     {
         int half = Math.Max(1, Environment.ProcessorCount / 2);
@@ -664,14 +797,15 @@ public partial class Form1 : Form
                     CancelScan();
                 }));
             }
-            else if (vkCode == NativeMethods.VK_S)
-            {
-                BeginInvoke((Action)(() =>
-                {
-                    bool enabled = _state.ToggleAction();
-                    Logger.Debug($"[toggle] enabled={enabled}");
-                }));
-            }
+            // 目前S键自动滑动检测精度极其不准确，暂时关闭
+            // else if (vkCode == NativeMethods.VK_S)
+            // {
+            //     BeginInvoke((Action)(() =>
+            //     {
+            //         bool enabled = _state.ToggleAction();
+            //         Logger.Debug($"[toggle] enabled={enabled}");
+            //     }));
+            // }
             else if (vkCode == NativeMethods.VK_A)
             {
                 BeginInvoke((Action)(() => RecordColors()));
@@ -753,6 +887,11 @@ public partial class Form1 : Form
         }
 
         private void labelMatchValue_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void label8_Click(object sender, EventArgs e)
         {
 
         }

@@ -15,8 +15,6 @@ partial class Form1
     private System.Windows.Forms.Panel panelLeft;
     private System.Windows.Forms.Panel panelRight;
     private System.Windows.Forms.Label labelRec;
-    private System.Windows.Forms.Label labelMatch;
-    private System.Windows.Forms.Label labelX;
     private System.Windows.Forms.Label RangeRecord;
     private System.Windows.Forms.Button btnRange;
     private System.Windows.Forms.Button btnFill;
@@ -56,8 +54,6 @@ partial class Form1
             this.panelLeft = new System.Windows.Forms.Panel();
             this.labelRec = new System.Windows.Forms.Label();
             this.panelRight = new System.Windows.Forms.Panel();
-            this.labelMatch = new System.Windows.Forms.Label();
-            this.labelX = new System.Windows.Forms.Label();
             this.RangeRecord = new System.Windows.Forms.Label();
             this.btnRange = new System.Windows.Forms.Button();
             this.btnFill = new System.Windows.Forms.Button();
@@ -79,12 +75,11 @@ partial class Form1
             this.label4 = new System.Windows.Forms.Label();
             this.label5 = new System.Windows.Forms.Label();
             this.label6 = new System.Windows.Forms.Label();
-            this.label7 = new System.Windows.Forms.Label();
-            this.label8 = new System.Windows.Forms.Label();
-            this.label9 = new System.Windows.Forms.Label();
             this.TheRange = new System.Windows.Forms.Label();
             this.label10 = new System.Windows.Forms.Label();
-            this.label11 = new System.Windows.Forms.Label();
+            this.ScanStep = new System.Windows.Forms.TextBox();
+            this.label7 = new System.Windows.Forms.Label();
+            this.label8 = new System.Windows.Forms.Label();
             this.panelLeft.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -116,32 +111,11 @@ partial class Form1
             this.panelRight.Size = new System.Drawing.Size(106, 50);
             this.panelRight.TabIndex = 15;
             // 
-            // labelMatch
-            // 
-            this.labelMatch.AutoSize = true;
-            this.labelMatch.ForeColor = System.Drawing.Color.Green;
-            this.labelMatch.Location = new System.Drawing.Point(147, 171);
-            this.labelMatch.Name = "labelMatch";
-            this.labelMatch.Size = new System.Drawing.Size(66, 20);
-            this.labelMatch.TabIndex = 13;
-            this.labelMatch.Text = "MATCH";
-            this.labelMatch.Visible = false;
-            // 
-            // labelX
-            // 
-            this.labelX.AutoSize = true;
-            this.labelX.ForeColor = System.Drawing.Color.Red;
-            this.labelX.Location = new System.Drawing.Point(147, 141);
-            this.labelX.Name = "labelX";
-            this.labelX.Size = new System.Drawing.Size(50, 20);
-            this.labelX.TabIndex = 12;
-            this.labelX.Text = "S:OFF";
-            // 
             // RangeRecord
             // 
             this.RangeRecord.AutoSize = true;
             this.RangeRecord.ForeColor = System.Drawing.Color.Red;
-            this.RangeRecord.Location = new System.Drawing.Point(12, 252);
+            this.RangeRecord.Location = new System.Drawing.Point(12, 221);
             this.RangeRecord.Name = "RangeRecord";
             this.RangeRecord.Size = new System.Drawing.Size(84, 20);
             this.RangeRecord.TabIndex = 11;
@@ -149,7 +123,7 @@ partial class Form1
             // 
             // btnRange
             // 
-            this.btnRange.Location = new System.Drawing.Point(12, 214);
+            this.btnRange.Location = new System.Drawing.Point(12, 183);
             this.btnRange.Name = "btnRange";
             this.btnRange.Size = new System.Drawing.Size(122, 26);
             this.btnRange.TabIndex = 10;
@@ -159,7 +133,7 @@ partial class Form1
             // 
             // btnFill
             // 
-            this.btnFill.Location = new System.Drawing.Point(12, 372);
+            this.btnFill.Location = new System.Drawing.Point(12, 341);
             this.btnFill.Name = "btnFill";
             this.btnFill.Size = new System.Drawing.Size(89, 26);
             this.btnFill.TabIndex = 9;
@@ -169,7 +143,7 @@ partial class Form1
             // labelScan
             // 
             this.labelScan.AutoSize = true;
-            this.labelScan.Location = new System.Drawing.Point(14, 413);
+            this.labelScan.Location = new System.Drawing.Point(14, 382);
             this.labelScan.Name = "labelScan";
             this.labelScan.Size = new System.Drawing.Size(144, 20);
             this.labelScan.TabIndex = 8;
@@ -177,7 +151,7 @@ partial class Form1
             // 
             // progressScan
             // 
-            this.progressScan.Location = new System.Drawing.Point(14, 436);
+            this.progressScan.Location = new System.Drawing.Point(14, 405);
             this.progressScan.Name = "progressScan";
             this.progressScan.Size = new System.Drawing.Size(351, 28);
             this.progressScan.TabIndex = 7;
@@ -185,7 +159,7 @@ partial class Form1
             // labelScanValue
             // 
             this.labelScanValue.AutoSize = true;
-            this.labelScanValue.Location = new System.Drawing.Point(160, 413);
+            this.labelScanValue.Location = new System.Drawing.Point(160, 382);
             this.labelScanValue.Name = "labelScanValue";
             this.labelScanValue.Size = new System.Drawing.Size(41, 20);
             this.labelScanValue.TabIndex = 6;
@@ -194,7 +168,7 @@ partial class Form1
             // labelMatchProgress
             // 
             this.labelMatchProgress.AutoSize = true;
-            this.labelMatchProgress.Location = new System.Drawing.Point(17, 487);
+            this.labelMatchProgress.Location = new System.Drawing.Point(17, 456);
             this.labelMatchProgress.Name = "labelMatchProgress";
             this.labelMatchProgress.Size = new System.Drawing.Size(144, 20);
             this.labelMatchProgress.TabIndex = 5;
@@ -203,7 +177,7 @@ partial class Form1
             // 
             // progressMatch
             // 
-            this.progressMatch.Location = new System.Drawing.Point(12, 510);
+            this.progressMatch.Location = new System.Drawing.Point(12, 479);
             this.progressMatch.Name = "progressMatch";
             this.progressMatch.Size = new System.Drawing.Size(351, 28);
             this.progressMatch.TabIndex = 4;
@@ -211,7 +185,7 @@ partial class Form1
             // labelMatchValue
             // 
             this.labelMatchValue.AutoSize = true;
-            this.labelMatchValue.Location = new System.Drawing.Point(160, 487);
+            this.labelMatchValue.Location = new System.Drawing.Point(160, 456);
             this.labelMatchValue.Name = "labelMatchValue";
             this.labelMatchValue.Size = new System.Drawing.Size(41, 20);
             this.labelMatchValue.TabIndex = 3;
@@ -221,7 +195,7 @@ partial class Form1
             // labelCores
             // 
             this.labelCores.AutoSize = true;
-            this.labelCores.Location = new System.Drawing.Point(14, 289);
+            this.labelCores.Location = new System.Drawing.Point(14, 258);
             this.labelCores.Name = "labelCores";
             this.labelCores.Size = new System.Drawing.Size(99, 20);
             this.labelCores.TabIndex = 2;
@@ -229,14 +203,14 @@ partial class Form1
             // 
             // textCores
             // 
-            this.textCores.Location = new System.Drawing.Point(121, 286);
+            this.textCores.Location = new System.Drawing.Point(121, 255);
             this.textCores.Name = "textCores";
             this.textCores.Size = new System.Drawing.Size(40, 27);
             this.textCores.TabIndex = 1;
             // 
             // btnAutoCores
             // 
-            this.btnAutoCores.Location = new System.Drawing.Point(12, 327);
+            this.btnAutoCores.Location = new System.Drawing.Point(12, 296);
             this.btnAutoCores.Name = "btnAutoCores";
             this.btnAutoCores.Size = new System.Drawing.Size(142, 26);
             this.btnAutoCores.TabIndex = 0;
@@ -277,7 +251,7 @@ partial class Form1
             // label2
             // 
             this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(224, 214);
+            this.label2.Location = new System.Drawing.Point(224, 183);
             this.label2.Name = "label2";
             this.label2.Size = new System.Drawing.Size(144, 20);
             this.label2.TabIndex = 21;
@@ -296,7 +270,7 @@ partial class Form1
             // label4
             // 
             this.label4.AutoSize = true;
-            this.label4.Location = new System.Drawing.Point(305, 286);
+            this.label4.Location = new System.Drawing.Point(305, 255);
             this.label4.Name = "label4";
             this.label4.Size = new System.Drawing.Size(63, 20);
             this.label4.TabIndex = 23;
@@ -305,7 +279,7 @@ partial class Form1
             // label5
             // 
             this.label5.AutoSize = true;
-            this.label5.Location = new System.Drawing.Point(254, 327);
+            this.label5.Location = new System.Drawing.Point(254, 296);
             this.label5.Name = "label5";
             this.label5.Size = new System.Drawing.Size(114, 20);
             this.label5.TabIndex = 24;
@@ -314,43 +288,16 @@ partial class Form1
             // label6
             // 
             this.label6.AutoSize = true;
-            this.label6.Location = new System.Drawing.Point(14, 121);
+            this.label6.Location = new System.Drawing.Point(12, 127);
             this.label6.Name = "label6";
             this.label6.Size = new System.Drawing.Size(361, 20);
             this.label6.TabIndex = 25;
             this.label6.Text = "——————————————————————";
             // 
-            // label7
-            // 
-            this.label7.AutoSize = true;
-            this.label7.Location = new System.Drawing.Point(12, 141);
-            this.label7.Name = "label7";
-            this.label7.Size = new System.Drawing.Size(129, 20);
-            this.label7.TabIndex = 26;
-            this.label7.Text = "是否开启滑动填充";
-            // 
-            // label8
-            // 
-            this.label8.AutoSize = true;
-            this.label8.Location = new System.Drawing.Point(260, 141);
-            this.label8.Name = "label8";
-            this.label8.Size = new System.Drawing.Size(108, 20);
-            this.label8.TabIndex = 27;
-            this.label8.Text = "按S开启或关闭";
-            // 
-            // label9
-            // 
-            this.label9.AutoSize = true;
-            this.label9.Location = new System.Drawing.Point(12, 191);
-            this.label9.Name = "label9";
-            this.label9.Size = new System.Drawing.Size(361, 20);
-            this.label9.TabIndex = 28;
-            this.label9.Text = "——————————————————————";
-            // 
             // TheRange
             // 
             this.TheRange.AutoSize = true;
-            this.TheRange.Location = new System.Drawing.Point(113, 252);
+            this.TheRange.Location = new System.Drawing.Point(113, 221);
             this.TheRange.Name = "TheRange";
             this.TheRange.Size = new System.Drawing.Size(18, 20);
             this.TheRange.TabIndex = 29;
@@ -359,32 +306,48 @@ partial class Form1
             // label10
             // 
             this.label10.AutoSize = true;
-            this.label10.Location = new System.Drawing.Point(167, 372);
+            this.label10.Location = new System.Drawing.Point(167, 341);
             this.label10.Name = "label10";
             this.label10.Size = new System.Drawing.Size(201, 20);
             this.label10.TabIndex = 30;
             this.label10.Text = "填充过程中按ESC可停止填充";
             // 
-            // label11
+            // ScanStep
             // 
-            this.label11.AutoSize = true;
-            this.label11.Location = new System.Drawing.Point(14, 171);
-            this.label11.Name = "label11";
-            this.label11.Size = new System.Drawing.Size(129, 20);
-            this.label11.TabIndex = 31;
-            this.label11.Text = "当前颜色是否匹配";
+            this.ScanStep.Location = new System.Drawing.Point(92, 150);
+            this.ScanStep.Name = "ScanStep";
+            this.ScanStep.Size = new System.Drawing.Size(69, 27);
+            this.ScanStep.TabIndex = 31;
+            // 
+            // label7
+            // 
+            this.label7.AutoSize = true;
+            this.label7.Location = new System.Drawing.Point(17, 153);
+            this.label7.Name = "label7";
+            this.label7.Size = new System.Drawing.Size(69, 20);
+            this.label7.TabIndex = 32;
+            this.label7.Text = "扫描步长";
+            // 
+            // label8
+            // 
+            this.label8.AutoSize = true;
+            this.label8.Location = new System.Drawing.Point(179, 153);
+            this.label8.Name = "label8";
+            this.label8.Size = new System.Drawing.Size(189, 20);
+            this.label8.TabIndex = 33;
+            this.label8.Text = "每间隔多少像素点进行扫描";
+            this.label8.Click += new System.EventHandler(this.label8_Click);
             // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 20F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(382, 559);
-            this.Controls.Add(this.label11);
-            this.Controls.Add(this.label10);
-            this.Controls.Add(this.TheRange);
-            this.Controls.Add(this.label9);
+            this.ClientSize = new System.Drawing.Size(382, 535);
             this.Controls.Add(this.label8);
             this.Controls.Add(this.label7);
+            this.Controls.Add(this.ScanStep);
+            this.Controls.Add(this.label10);
+            this.Controls.Add(this.TheRange);
             this.Controls.Add(this.label6);
             this.Controls.Add(this.label5);
             this.Controls.Add(this.label4);
@@ -405,8 +368,6 @@ partial class Form1
             this.Controls.Add(this.btnFill);
             this.Controls.Add(this.btnRange);
             this.Controls.Add(this.RangeRecord);
-            this.Controls.Add(this.labelX);
-            this.Controls.Add(this.labelMatch);
             this.Controls.Add(this.panelRight);
             this.Controls.Add(this.panelLeft);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
@@ -431,12 +392,11 @@ partial class Form1
         private Label label4;
         private Label label5;
         private Label label6;
-        private Label label7;
-        private Label label8;
-        private Label label9;
         private Label TheRange;
         private Label label10;
-        private Label label11;
+        private TextBox ScanStep;
+        private Label label7;
+        private Label label8;
     }
 }
 
