@@ -163,7 +163,19 @@ public partial class Form1 : Form
         labelMatch.Visible = match;
         labelX.Text = snapshot.actionEnabled ? "S:ON" : "S:OFF";
         labelX.ForeColor = snapshot.actionEnabled ? Color.Green : Color.Red;
-        RangeRecord.Text = snapshot.recordedRange.HasValue ? "R:OK" : "R:--";
+        if (snapshot.recordedRange.HasValue)
+        {
+            RangeRecord.ForeColor = Color.Green;
+            RangeRecord.Text = "范围已记录";
+            var rect = snapshot.recordedRange.Value;
+            TheRange.Text = $"{rect.X},{rect.Y},{rect.Width},{rect.Height}";
+        }
+        else
+        {
+            RangeRecord.ForeColor = Color.Red;
+            RangeRecord.Text = "范围未记录";
+            TheRange.Text = "0";
+        }
 
         var scanTotal = Math.Max(1, snapshot.scanTotal);
         progressScan.Maximum = scanTotal;
@@ -736,6 +748,11 @@ public partial class Form1 : Form
         }
 
         private void labelMatchProgress_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void labelMatchValue_Click(object sender, EventArgs e)
         {
 
         }

@@ -185,7 +185,7 @@ partial class Form1
             // labelScanValue
             // 
             this.labelScanValue.AutoSize = true;
-            this.labelScanValue.Location = new System.Drawing.Point(327, 413);
+            this.labelScanValue.Location = new System.Drawing.Point(160, 413);
             this.labelScanValue.Name = "labelScanValue";
             this.labelScanValue.Size = new System.Drawing.Size(41, 20);
             this.labelScanValue.TabIndex = 6;
@@ -211,11 +211,12 @@ partial class Form1
             // labelMatchValue
             // 
             this.labelMatchValue.AutoSize = true;
-            this.labelMatchValue.Location = new System.Drawing.Point(324, 487);
+            this.labelMatchValue.Location = new System.Drawing.Point(160, 487);
             this.labelMatchValue.Name = "labelMatchValue";
             this.labelMatchValue.Size = new System.Drawing.Size(41, 20);
             this.labelMatchValue.TabIndex = 3;
             this.labelMatchValue.Text = "0 / 0";
+            this.labelMatchValue.Click += new System.EventHandler(this.labelMatchValue_Click);
             // 
             // labelCores
             // 
