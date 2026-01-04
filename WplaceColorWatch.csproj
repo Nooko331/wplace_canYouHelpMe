@@ -7,6 +7,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>9.0</LangVersion>
+    <AssemblyName>wplace_canYouHelpMe</AssemblyName>
+    <RootNamespace>wplace_canYouHelpMe</RootNamespace>
   </PropertyGroup>
 
 </Project>
