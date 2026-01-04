@@ -43,19 +43,16 @@ public partial class Form1 : Form
         ScanStep.Text = _options.ScanStep.ToString();
 
         SetHook();
-        Shown += (_, _) => SetTopMostNoActivate();
+        Shown += (_, _) => Activate();
     }
-
-    protected override bool ShowWithoutActivation => true;
 
     protected override CreateParams CreateParams
     {
         get
         {
-            const int WS_EX_NOACTIVATE = 0x08000000;
             const int WS_EX_TOOLWINDOW = 0x00000080;
             var cp = base.CreateParams;
-            cp.ExStyle |= WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
+            cp.ExStyle |= WS_EX_TOOLWINDOW;
             return cp;
         }
     }
@@ -91,16 +88,13 @@ public partial class Form1 : Form
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
-    private void SetTopMostNoActivate()
+    protected override void OnMouseDown(MouseEventArgs e)
     {
-        NativeMethods.SetWindowPos(
-            Handle,
-            NativeMethods.HWND_TOPMOST,
-            0,
-            0,
-            0,
-            0,
-            NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
+        base.OnMouseDown(e);
+        if (!Focused)
+        {
+            Activate();
+        }
     }
 
     private void UpdateTimerOnTick(object? sender, EventArgs e)
