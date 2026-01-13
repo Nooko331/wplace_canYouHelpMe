@@ -3,6 +3,8 @@
 这是一个辅助wplace涂色的工具，辅助进行涂色。
 
 注意：该工具依赖于BlueMarble渲染的像素方块。
+### 视频演示
+https://www.bilibili.com/video/BV1btibBWEUf/
 
 # 如何使用？
 
