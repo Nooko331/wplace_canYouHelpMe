@@ -22,8 +22,6 @@ public partial class Form1 : Form
     private NativeMethods.LowLevelKeyboardProc? _hookProc;
     private CancellationTokenSource? _scanCts;
     private CancellationTokenSource? _autoAllCts;
-    private long _lastMatchDebugTicks;
-    private bool _lastMatch;
 
     public Form1(Options options)
     {
