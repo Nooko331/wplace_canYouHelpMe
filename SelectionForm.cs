@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -120,7 +120,9 @@ namespace WplaceColorWatch
             const int dotSize = 5;
             for (int y = rect.Top; y <= rect.Bottom; y += _scanStep)
             {
-                for (int x = rect.Left; x <= rect.Right; x += _scanStep)
+                int row = (y - rect.Top) / _scanStep;
+                int startOffset = (row % 2 == 1) ? (_scanStep / 2) : 0;
+                for (int x = rect.Left + startOffset; x <= rect.Right; x += _scanStep)
                 {
                     graphics.FillEllipse(brush, x - 1, y - 1, dotSize, dotSize);
                 }

@@ -487,7 +487,9 @@ public partial class Form1 : Form
                     Logger.Debug("[scan] canceled");
                     return points;
                 }
-                for (int x = 0; x < width; x += _options.ScanStep)
+                int row = y / _options.ScanStep;
+                int startOffset = (row % 2 == 1) ? (_options.ScanStep / 2) : 0;
+                for (int x = startOffset; x < width; x += _options.ScanStep)
                 {
                     if (token.IsCancellationRequested)
                     {
@@ -540,7 +542,8 @@ public partial class Form1 : Form
                         {
                             return local;
                         }
-                        for (int x = 0; x < width; x += _options.ScanStep)
+                        int startOffset = (row % 2 == 1) ? (_options.ScanStep / 2) : 0;
+                        for (int x = startOffset; x < width; x += _options.ScanStep)
                         {
                             if (token.IsCancellationRequested)
                             {
