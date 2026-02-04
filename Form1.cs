@@ -1,10 +1,12 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.IO;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -19,6 +21,7 @@ public partial class Form1 : Form
     private IntPtr _hookId = IntPtr.Zero;
     private NativeMethods.LowLevelKeyboardProc? _hookProc;
     private CancellationTokenSource? _scanCts;
+    private CancellationTokenSource? _autoAllCts;
     private long _lastMatchDebugTicks;
     private bool _lastMatch;
 
@@ -38,6 +41,7 @@ public partial class Form1 : Form
 
         btnRange.Click += (_, _) => BeginRangeSelect();
         btnFill.Click += (_, _) => BeginFill();
+        btnAutoFillAll.Click += (_, _) => BeginAutoFillAll();
         btnAutoCores.Click += (_, _) => AutoDetectCores();
         textCores.Text = _options.ScanWorkers.ToString();
         ScanStep.Text = _options.ScanStep.ToString();
@@ -728,6 +732,13 @@ public partial class Form1 : Form
         mouse_event(0x04, 0, 0, 0, UIntPtr.Zero);
     }
 
+    private void ClickRightCurrentPosition()
+    {
+        Thread.Sleep(_options.ActionDelayMs);
+        mouse_event(0x08, 0, 0, 0, UIntPtr.Zero); // MOUSEEVENTF_RIGHTDOWN
+        mouse_event(0x10, 0, 0, 0, UIntPtr.Zero); // MOUSEEVENTF_RIGHTUP
+    }
+
     [DllImport("user32.dll")]
     private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
 
@@ -778,6 +789,7 @@ public partial class Form1 : Form
     private void CleanupResources()
     {
         CancelScan();
+        CancelAutoAll();
         Unhook();
     }
 
@@ -792,6 +804,7 @@ public partial class Form1 : Form
                 {
                     _state.StopAll();
                     CancelScan();
+                    CancelAutoAll();
                 }));
             }
             // 目前S键自动滑动检测精度极其不准确，暂时关闭
@@ -805,13 +818,13 @@ public partial class Form1 : Form
             // }
             else if (vkCode == NativeMethods.VK_A)
             {
-                BeginInvoke((Action)(() => RecordColors()));
+                BeginInvoke((Action)(() => PerformColorRecordAndAction()));
             }
         }
         return NativeMethods.CallNextHookEx(_hookId, nCode, wParam, lParam);
     }
 
-    private void RecordColors()
+    private void PerformColorRecordAndAction()
     {
         var pos = Cursor.Position;
         BgrColor hover;
@@ -834,9 +847,11 @@ public partial class Form1 : Form
 
         _state.RecordColors(new List<BgrColor> { hover, clear }, new List<BgrColor> { hover, clear }, pos);
         Logger.Debug($"[record] raw_colors_rgb=[{string.Join(",", hover.ToRgbArray())}],[{string.Join(",", clear.ToRgbArray())}] pos=({pos.X},{pos.Y})");
-        FocusTargetUnderCursor();
+        // FocusTargetUnderCursor(); // Removed as requested
         Logger.Debug("[action] send key I");
+        Thread.Sleep(50);
         SendKey(NativeMethods.VK_I);
+        Thread.Sleep(50);
         Logger.Debug("[action] click left");
         ClickCurrentPosition();
     }
@@ -859,11 +874,293 @@ public partial class Form1 : Form
                 var tid = NativeMethods.GetWindowThreadProcessId(hwnd, out var pid);
                 Logger.Debug($"[action] focus hwnd={hwnd} tid={tid} pid={pid} ok={ok}");
             }
-            Thread.Sleep(_options.ActionDelayMs);
+        }
+        Thread.Sleep(_options.ActionDelayMs);
+    }
+
+    private void CancelAutoAll()
+    {
+        var cts = Interlocked.Exchange(ref _autoAllCts, null);
+        if (cts != null)
+        {
+            cts.Cancel();
+            cts.Dispose();
         }
     }
 
-        private void Form1_Load(object sender, EventArgs e)
+    private void BeginAutoFillAll()
+    {
+        if (!btnAutoFillAll.Enabled) return;
+
+        _options.ScanStep = ReadScanStep();
+        if (ScanStep.Text != _options.ScanStep.ToString())
+        {
+            ScanStep.Text = _options.ScanStep.ToString();
+        }
+
+        var snapshot = _state.Snapshot();
+        if (!snapshot.recordedRange.HasValue)
+        {
+            MessageBox.Show("请先框选检测范围", "提示");
+            return;
+        }
+
+        var htmlColors = GetPredefinedColors();
+        if (htmlColors.Count == 0)
+        {
+             MessageBox.Show("未找到颜色定义", "错误");
+             return;
+        }
+        Logger.Debug($"[auto_all] found {htmlColors.Count} colors");
+
+        var workers = ReadScanWorkers();
+        _options.ScanWorkers = workers;
+        if (textCores.Text != workers.ToString())
+        {
+            textCores.Text = workers.ToString();
+        }
+
+        btnAutoFillAll.Enabled = false;
+        btnFill.Enabled = false;
+        btnRange.Enabled = false;
+        
+        CancelScan();
+        CancelAutoAll();
+        _autoAllCts = new CancellationTokenSource();
+        var token = _autoAllCts.Token;
+
+        Task.Run(() =>
+        {
+            try
+            {
+                Logger.Debug("[auto_all] scanning...");
+                var groups = ScanMatchingPointsForAllColors(snapshot.recordedRange.Value, htmlColors, token);
+                if (token.IsCancellationRequested) return;
+
+                int totalPoints = groups.Values.Sum(list => list.Count);
+                Logger.Debug($"[auto_all] scan done. total_points={totalPoints}");
+                
+                BeginInvoke((Action)(() => {
+                    progressAutoAll.Maximum = totalPoints;
+                    progressAutoAll.Value = 0;
+                    labelAutoAllValue.Text = $"0 / {totalPoints}";
+                }));
+
+                ExecuteAutoFillAll(groups, htmlColors, token);
+            }
+            catch (Exception ex)
+            {
+                Logger.Debug($"[auto_all] error: {ex}");
+            }
+            finally
+            {
+                BeginInvoke((Action)(() =>
+                {
+                    btnAutoFillAll.Enabled = true;
+                    btnFill.Enabled = true;
+                    btnRange.Enabled = true;
+                    var cts = Interlocked.Exchange(ref _autoAllCts, null);
+                    cts?.Dispose();
+                }));
+            }
+        }, token);
+    }
+
+    private List<BgrColor> GetPredefinedColors()
+    {
+        return new List<BgrColor>
+        {
+            new BgrColor(0, 0, 0),       // Black
+            new BgrColor(60, 60, 60),    // Dark Gray
+            new BgrColor(120, 120, 120), // Gray
+            new BgrColor(170, 170, 170), // Medium Gray
+            new BgrColor(210, 210, 210), // Light Gray
+            new BgrColor(255, 255, 255), // White
+            new BgrColor(24, 0, 96),     // Deep Red (BGR: 24, 0, 96) -> RGB: 96, 0, 24
+            new BgrColor(30, 14, 165),   // Dark Red (BGR: 30, 14, 165) -> RGB: 165, 14, 30
+            new BgrColor(36, 28, 237),   // Red (BGR: 36, 28, 237) -> RGB: 237, 28, 36
+            new BgrColor(114, 128, 250), // Light Red (BGR: 114, 128, 250) -> RGB: 250, 128, 114
+            new BgrColor(26, 92, 228),   // Dark Orange (BGR: 26, 92, 228) -> RGB: 228, 92, 26
+            new BgrColor(39, 127, 255),  // Orange (BGR: 39, 127, 255) -> RGB: 255, 127, 39
+            new BgrColor(9, 170, 246),   // Gold (BGR: 9, 170, 246) -> RGB: 246, 170, 9
+            new BgrColor(59, 221, 249),  // Yellow (BGR: 59, 221, 249) -> RGB: 249, 221, 59
+            new BgrColor(188, 250, 255), // Light Yellow (BGR: 188, 250, 255) -> RGB: 255, 250, 188
+            new BgrColor(49, 132, 156),  // Dark Goldenrod (BGR: 49, 132, 156) -> RGB: 156, 132, 49
+            new BgrColor(49, 173, 197),  // Goldenrod (BGR: 49, 173, 197) -> RGB: 197, 173, 49
+            new BgrColor(95, 212, 232),  // Light Goldenrod (BGR: 95, 212, 232) -> RGB: 232, 212, 95
+            new BgrColor(58, 107, 74),   // Dark Olive (BGR: 58, 107, 74) -> RGB: 74, 107, 58
+            new BgrColor(74, 148, 90),   // Olive (BGR: 74, 148, 90) -> RGB: 90, 148, 74
+            new BgrColor(115, 197, 132), // Light Olive (BGR: 115, 197, 132) -> RGB: 132, 197, 115
+            new BgrColor(104, 185, 14),  // Dark Green (BGR: 104, 185, 14) -> RGB: 14, 185, 104
+            new BgrColor(123, 230, 19),  // Green (BGR: 123, 230, 19) -> RGB: 19, 230, 123
+            new BgrColor(94, 255, 135),  // Light Green (BGR: 94, 255, 135) -> RGB: 135, 255, 94
+            new BgrColor(110, 129, 12),  // Dark Teal (BGR: 110, 129, 12) -> RGB: 12, 129, 110
+            new BgrColor(166, 174, 16),  // Teal (BGR: 166, 174, 16) -> RGB: 16, 174, 166
+            new BgrColor(190, 225, 19),  // Light Teal (BGR: 190, 225, 19) -> RGB: 19, 225, 190
+            new BgrColor(159, 121, 15),  // Dark Cyan (BGR: 159, 121, 15) -> RGB: 15, 121, 159
+            new BgrColor(242, 247, 96),  // Cyan (BGR: 242, 247, 96) -> RGB: 96, 247, 242
+            new BgrColor(242, 250, 187), // Light Cyan (BGR: 242, 250, 187) -> RGB: 187, 250, 242
+            new BgrColor(158, 80, 40),   // Dark Blue (BGR: 158, 80, 40) -> RGB: 40, 80, 158
+            new BgrColor(228, 147, 64),  // Blue (BGR: 228, 147, 64) -> RGB: 64, 147, 228
+            new BgrColor(255, 199, 125), // Light Blue (BGR: 255, 199, 125) -> RGB: 125, 199, 255
+            new BgrColor(184, 49, 77),   // Dark Indigo (BGR: 184, 49, 77) -> RGB: 77, 49, 184
+            new BgrColor(246, 80, 107),  // Indigo (BGR: 246, 80, 107) -> RGB: 107, 80, 246
+            new BgrColor(251, 177, 153), // Light Indigo (BGR: 251, 177, 153) -> RGB: 153, 177, 251
+            new BgrColor(132, 66, 74),   // Dark Slate Blue (BGR: 132, 66, 74) -> RGB: 74, 66, 132
+            new BgrColor(196, 113, 122), // Slate Blue (BGR: 196, 113, 122) -> RGB: 122, 113, 196
+            new BgrColor(241, 174, 181), // Light Slate Blue (BGR: 241, 174, 181) -> RGB: 181, 174, 241
+            new BgrColor(153, 12, 120),  // Dark Purple (BGR: 153, 12, 120) -> RGB: 120, 12, 153
+            new BgrColor(185, 56, 170),  // Purple (BGR: 185, 56, 170) -> RGB: 170, 56, 185
+            new BgrColor(249, 159, 224), // Light Purple (BGR: 249, 159, 224) -> RGB: 224, 159, 249
+            new BgrColor(122, 0, 203),   // Dark Pink (BGR: 122, 0, 203) -> RGB: 203, 0, 122
+            new BgrColor(128, 31, 236),  // Pink (BGR: 128, 31, 236) -> RGB: 236, 31, 128
+            new BgrColor(169, 141, 243), // Light Pink (BGR: 169, 141, 243) -> RGB: 243, 141, 169
+            new BgrColor(73, 82, 155),   // Dark Peach (BGR: 73, 82, 155) -> RGB: 155, 82, 73
+            new BgrColor(120, 128, 209), // Peach (BGR: 120, 128, 209) -> RGB: 209, 128, 120
+            new BgrColor(164, 182, 250), // Light Peach (BGR: 164, 182, 250) -> RGB: 250, 182, 164
+            new BgrColor(52, 70, 104),   // Dark Brown (BGR: 52, 70, 104) -> RGB: 104, 70, 52
+            new BgrColor(42, 104, 149),  // Brown (BGR: 42, 104, 149) -> RGB: 149, 104, 42
+            new BgrColor(99, 164, 219),  // Light Brown (BGR: 99, 164, 219) -> RGB: 219, 164, 99
+            new BgrColor(82, 99, 123),   // Dark Tan (BGR: 82, 99, 123) -> RGB: 123, 99, 82
+            new BgrColor(107, 132, 156), // Tan (BGR: 107, 132, 156) -> RGB: 156, 132, 107
+            new BgrColor(148, 181, 214), // Light Tan (BGR: 148, 181, 214) -> RGB: 214, 181, 148
+            new BgrColor(81, 128, 209),  // Dark Beige (BGR: 81, 128, 209) -> RGB: 209, 128, 81
+            new BgrColor(119, 178, 248), // Beige (BGR: 119, 178, 248) -> RGB: 248, 178, 119
+            new BgrColor(165, 197, 255), // Light Beige (BGR: 165, 197, 255) -> RGB: 255, 197, 165
+            new BgrColor(63, 100, 109),  // Dark Stone (BGR: 63, 100, 109) -> RGB: 109, 100, 63
+            new BgrColor(107, 140, 148), // Stone (BGR: 107, 140, 148) -> RGB: 148, 140, 107
+            new BgrColor(158, 197, 205), // Light Stone (BGR: 158, 197, 205) -> RGB: 205, 197, 158
+            new BgrColor(65, 57, 51),    // Dark Slate (BGR: 65, 57, 51) -> RGB: 51, 57, 65
+            new BgrColor(141, 117, 109), // Slate (BGR: 141, 117, 109) -> RGB: 109, 117, 141
+            new BgrColor(209, 185, 179)  // Light Slate (BGR: 209, 185, 179) -> RGB: 179, 185, 209
+        };
+    }
+
+    private Dictionary<BgrColor, List<Point>> ScanMatchingPointsForAllColors(Rectangle rect, List<BgrColor> targets, CancellationToken token)
+    {
+        var groups = new ConcurrentDictionary<BgrColor, ConcurrentBag<Point>>();
+        foreach(var c in targets) groups[c] = new ConcurrentBag<Point>();
+
+        int width = Math.Max(1, rect.Width);
+        int height = Math.Max(1, rect.Height);
+        int countY = ((height - 1) / _options.ScanStep) + 1;
+        
+        using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(bitmap))
+        {
+            g.CopyFromScreen(rect.Left, rect.Top, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
+        }
+
+        var bitmapRect = new Rectangle(0, 0, width, height);
+        var data = bitmap.LockBits(bitmapRect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        byte[] buffer;
+        try
+        {
+            int bytes = Math.Abs(data.Stride) * height;
+            buffer = new byte[bytes];
+            Marshal.Copy(data.Scan0, buffer, 0, bytes);
+        }
+        finally
+        {
+            bitmap.UnlockBits(data);
+        }
+
+        Parallel.For(0, countY, new ParallelOptions { MaxDegreeOfParallelism = _options.ScanWorkers, CancellationToken = token }, (row) =>
+        {
+            int y = row * _options.ScanStep;
+            if (y >= height) return;
+            
+            int startOffset = (row % 2 == 1) ? (_options.ScanStep / 2) : 0;
+            for (int x = startOffset; x < width; x += _options.ScanStep)
+            {
+                if (token.IsCancellationRequested) return;
+
+                int offset = (y * data.Stride) + (x * 4);
+                byte b = buffer[offset];
+                byte g = buffer[offset + 1];
+                byte r = buffer[offset + 2];
+                var pixelColor = new BgrColor(b, g, r);
+
+                foreach (var target in targets)
+                {
+                    if (pixelColor.MaxDiff(target) <= _options.ColorTol)
+                    {
+                        groups[target].Add(new Point(rect.Left + x, rect.Top + y));
+                        break; 
+                    }
+                }
+            }
+        });
+
+        var result = new Dictionary<BgrColor, List<Point>>();
+        foreach (var kvp in groups)
+        {
+            if (kvp.Value.Count > 0)
+            {
+                result[kvp.Key] = kvp.Value.ToList();
+            }
+        }
+        return result;
+    }
+
+    private void ExecuteAutoFillAll(Dictionary<BgrColor, List<Point>> groups, List<BgrColor> order, CancellationToken token)
+    {
+        int total = groups.Values.Sum(l => l.Count);
+        int processed = 0;
+
+        // Ensure we yield focus away from our form initially
+        Thread.Sleep(500); 
+
+        foreach (var color in order)
+        {
+            if (token.IsCancellationRequested) return;
+            if (!groups.ContainsKey(color)) continue;
+
+            var points = groups[color];
+            if (points.Count == 0) continue;
+
+            var first = points[0];
+            Cursor.Position = first;
+            Thread.Sleep(_options.ActionDelayMs);
+            
+            // Focus on the window under cursor FIRST and wait longer
+            ClickRightCurrentPosition();
+            Thread.Sleep(200); // Increased delay to ensure focus is applied
+            
+            PerformColorRecordAndAction();
+            if (token.IsCancellationRequested) return;
+            Thread.Sleep(50);
+            SendSpace();
+            processed++;
+            UpdateAutoAllProgress(processed, total);
+
+            // Handle subsequent points for this color
+            for (int i = 1; i < points.Count; i++)
+            {
+                if (token.IsCancellationRequested) return;
+                Cursor.Position = points[i];
+                // FocusTargetUnderCursor(); 
+                SendSpace();
+                processed++;
+                UpdateAutoAllProgress(processed, total);
+            }
+        }
+    }
+
+    private void UpdateAutoAllProgress(int current, int total)
+    {
+        if (current % 5 == 0 || current == total) 
+        {
+            BeginInvoke((Action)(() =>
+            {
+                progressAutoAll.Maximum = total;
+                progressAutoAll.Value = Math.Min(current, total);
+                labelAutoAllValue.Text = $"{current} / {total}";
+            }));
+        }
+    }
+
+    private void Form1_Load(object sender, EventArgs e)
         {
 
         }

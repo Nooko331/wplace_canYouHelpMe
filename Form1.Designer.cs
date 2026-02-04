@@ -28,6 +28,10 @@ partial class Form1
     private System.Windows.Forms.TextBox textCores;
     private System.Windows.Forms.Button btnAutoCores;
     private System.Windows.Forms.Timer updateTimer;
+    private System.Windows.Forms.Button btnAutoFillAll;
+    private System.Windows.Forms.Label labelAutoAll;
+    private System.Windows.Forms.ProgressBar progressAutoAll;
+    private System.Windows.Forms.Label labelAutoAllValue;
 
     /// <summary>
     ///  Clean up any resources being used.
@@ -80,6 +84,10 @@ partial class Form1
             this.ScanStep = new System.Windows.Forms.TextBox();
             this.label7 = new System.Windows.Forms.Label();
             this.label8 = new System.Windows.Forms.Label();
+            this.btnAutoFillAll = new System.Windows.Forms.Button();
+            this.labelAutoAll = new System.Windows.Forms.Label();
+            this.progressAutoAll = new System.Windows.Forms.ProgressBar();
+            this.labelAutoAllValue = new System.Windows.Forms.Label();
             this.panelLeft.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -338,11 +346,49 @@ partial class Form1
             this.label8.Text = "每间隔多少像素点进行扫描";
             this.label8.Click += new System.EventHandler(this.label8_Click);
             // 
+            // btnAutoFillAll
+            // 
+            this.btnAutoFillAll.Location = new System.Drawing.Point(12, 520);
+            this.btnAutoFillAll.Name = "btnAutoFillAll";
+            this.btnAutoFillAll.Size = new System.Drawing.Size(160, 26);
+            this.btnAutoFillAll.TabIndex = 34;
+            this.btnAutoFillAll.Text = "全自动检测及填充";
+            this.btnAutoFillAll.UseVisualStyleBackColor = true;
+            // 
+            // labelAutoAll
+            // 
+            this.labelAutoAll.AutoSize = true;
+            this.labelAutoAll.Location = new System.Drawing.Point(17, 560);
+            this.labelAutoAll.Name = "labelAutoAll";
+            this.labelAutoAll.Size = new System.Drawing.Size(144, 20);
+            this.labelAutoAll.TabIndex = 35;
+            this.labelAutoAll.Text = "全自动填充进度";
+            // 
+            // progressAutoAll
+            // 
+            this.progressAutoAll.Location = new System.Drawing.Point(12, 585);
+            this.progressAutoAll.Name = "progressAutoAll";
+            this.progressAutoAll.Size = new System.Drawing.Size(351, 28);
+            this.progressAutoAll.TabIndex = 36;
+            // 
+            // labelAutoAllValue
+            // 
+            this.labelAutoAllValue.AutoSize = true;
+            this.labelAutoAllValue.Location = new System.Drawing.Point(160, 560);
+            this.labelAutoAllValue.Name = "labelAutoAllValue";
+            this.labelAutoAllValue.Size = new System.Drawing.Size(41, 20);
+            this.labelAutoAllValue.TabIndex = 37;
+            this.labelAutoAllValue.Text = "0 / 0";
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 20F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(382, 535);
+            this.ClientSize = new System.Drawing.Size(382, 630);
+            this.Controls.Add(this.labelAutoAllValue);
+            this.Controls.Add(this.progressAutoAll);
+            this.Controls.Add(this.labelAutoAll);
+            this.Controls.Add(this.btnAutoFillAll);
             this.Controls.Add(this.label8);
             this.Controls.Add(this.label7);
             this.Controls.Add(this.ScanStep);
