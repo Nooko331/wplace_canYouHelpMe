@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+using System;
+using System.Collections.Generic;
 using System.Drawing;
 
 namespace WplaceColorWatch
@@ -23,6 +24,8 @@ public sealed class RuntimeState
     public long LastActionTicks { get; private set; }
     public int ScanTotal { get; private set; }
     public int ScanDone { get; private set; }
+    public DateTime ScanStartTime { get; private set; }
+    public DateTime AutoFillStartTime { get; private set; }
 
     public void UpdateCurrent(BgrColor bgr, Point pos)
     {
@@ -83,6 +86,17 @@ public sealed class RuntimeState
             AutoFillIndex = 0;
             ScanTotal = 0;
             ScanDone = 0;
+            AutoFillStartTime = DateTime.Now;
+        }
+    }
+
+    public void StartScan(int total)
+    {
+        lock (_lock)
+        {
+            ScanTotal = total;
+            ScanDone = 0;
+            ScanStartTime = DateTime.Now;
         }
     }
 
@@ -148,7 +162,8 @@ public sealed class RuntimeState
     public (BgrColor? currentBgr, Point? currentPos, List<BgrColor> recordedBgrs,
         List<BgrColor> recordedBgrsRaw, Point? recordedPos, Rectangle? recordedRange,
         bool actionEnabled, bool autoFillEnabled, bool autoFillPrimed, bool autoFillReady,
-        int autoFillIndex, int autoFillPointsCount, long lastActionTicks, int scanTotal, int scanDone) Snapshot()
+        int autoFillIndex, int autoFillPointsCount, long lastActionTicks, int scanTotal, int scanDone,
+        DateTime scanStartTime, DateTime autoFillStartTime) Snapshot()
     {
         lock (_lock)
         {
@@ -167,7 +182,9 @@ public sealed class RuntimeState
                 AutoFillPoints.Count,
                 LastActionTicks,
                 ScanTotal,
-                ScanDone
+                ScanDone,
+                ScanStartTime,
+                AutoFillStartTime
             );
         }
     }

@@ -123,7 +123,7 @@ partial class Form1
             // 
             this.RangeRecord.AutoSize = true;
             this.RangeRecord.ForeColor = System.Drawing.Color.Red;
-            this.RangeRecord.Location = new System.Drawing.Point(12, 221);
+            this.RangeRecord.Location = new System.Drawing.Point(12, 311);
             this.RangeRecord.Name = "RangeRecord";
             this.RangeRecord.Size = new System.Drawing.Size(84, 20);
             this.RangeRecord.TabIndex = 11;
@@ -131,7 +131,7 @@ partial class Form1
             // 
             // btnRange
             // 
-            this.btnRange.Location = new System.Drawing.Point(12, 183);
+            this.btnRange.Location = new System.Drawing.Point(12, 273);
             this.btnRange.Name = "btnRange";
             this.btnRange.Size = new System.Drawing.Size(122, 26);
             this.btnRange.TabIndex = 10;
@@ -203,7 +203,7 @@ partial class Form1
             // labelCores
             // 
             this.labelCores.AutoSize = true;
-            this.labelCores.Location = new System.Drawing.Point(14, 258);
+            this.labelCores.Location = new System.Drawing.Point(12, 160);
             this.labelCores.Name = "labelCores";
             this.labelCores.Size = new System.Drawing.Size(99, 20);
             this.labelCores.TabIndex = 2;
@@ -211,14 +211,14 @@ partial class Form1
             // 
             // textCores
             // 
-            this.textCores.Location = new System.Drawing.Point(121, 255);
+            this.textCores.Location = new System.Drawing.Point(119, 157);
             this.textCores.Name = "textCores";
             this.textCores.Size = new System.Drawing.Size(40, 27);
             this.textCores.TabIndex = 1;
             // 
             // btnAutoCores
             // 
-            this.btnAutoCores.Location = new System.Drawing.Point(12, 296);
+            this.btnAutoCores.Location = new System.Drawing.Point(10, 198);
             this.btnAutoCores.Name = "btnAutoCores";
             this.btnAutoCores.Size = new System.Drawing.Size(142, 26);
             this.btnAutoCores.TabIndex = 0;
@@ -259,7 +259,7 @@ partial class Form1
             // label2
             // 
             this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(224, 183);
+            this.label2.Location = new System.Drawing.Point(224, 273);
             this.label2.Name = "label2";
             this.label2.Size = new System.Drawing.Size(144, 20);
             this.label2.TabIndex = 21;
@@ -278,7 +278,7 @@ partial class Form1
             // label4
             // 
             this.label4.AutoSize = true;
-            this.label4.Location = new System.Drawing.Point(305, 255);
+            this.label4.Location = new System.Drawing.Point(303, 157);
             this.label4.Name = "label4";
             this.label4.Size = new System.Drawing.Size(63, 20);
             this.label4.TabIndex = 23;
@@ -287,7 +287,7 @@ partial class Form1
             // label5
             // 
             this.label5.AutoSize = true;
-            this.label5.Location = new System.Drawing.Point(254, 296);
+            this.label5.Location = new System.Drawing.Point(252, 198);
             this.label5.Name = "label5";
             this.label5.Size = new System.Drawing.Size(114, 20);
             this.label5.TabIndex = 24;
@@ -305,7 +305,7 @@ partial class Form1
             // TheRange
             // 
             this.TheRange.AutoSize = true;
-            this.TheRange.Location = new System.Drawing.Point(113, 221);
+            this.TheRange.Location = new System.Drawing.Point(113, 311);
             this.TheRange.Name = "TheRange";
             this.TheRange.Size = new System.Drawing.Size(18, 20);
             this.TheRange.TabIndex = 29;
@@ -322,7 +322,7 @@ partial class Form1
             // 
             // ScanStep
             // 
-            this.ScanStep.Location = new System.Drawing.Point(92, 150);
+            this.ScanStep.Location = new System.Drawing.Point(89, 231);
             this.ScanStep.Name = "ScanStep";
             this.ScanStep.Size = new System.Drawing.Size(69, 27);
             this.ScanStep.TabIndex = 31;
@@ -330,7 +330,7 @@ partial class Form1
             // label7
             // 
             this.label7.AutoSize = true;
-            this.label7.Location = new System.Drawing.Point(17, 153);
+            this.label7.Location = new System.Drawing.Point(14, 234);
             this.label7.Name = "label7";
             this.label7.Size = new System.Drawing.Size(69, 20);
             this.label7.TabIndex = 32;
@@ -339,7 +339,7 @@ partial class Form1
             // label8
             // 
             this.label8.AutoSize = true;
-            this.label8.Location = new System.Drawing.Point(179, 153);
+            this.label8.Location = new System.Drawing.Point(176, 234);
             this.label8.Name = "label8";
             this.label8.Size = new System.Drawing.Size(189, 20);
             this.label8.TabIndex = 33;
@@ -360,7 +360,7 @@ partial class Form1
             this.labelAutoAll.AutoSize = true;
             this.labelAutoAll.Location = new System.Drawing.Point(17, 560);
             this.labelAutoAll.Name = "labelAutoAll";
-            this.labelAutoAll.Size = new System.Drawing.Size(144, 20);
+            this.labelAutoAll.Size = new System.Drawing.Size(114, 20);
             this.labelAutoAll.TabIndex = 35;
             this.labelAutoAll.Text = "全自动填充进度";
             // 
@@ -384,7 +384,7 @@ partial class Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 20F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(382, 630);
+            this.ClientSize = new System.Drawing.Size(383, 630);
             this.Controls.Add(this.labelAutoAllValue);
             this.Controls.Add(this.progressAutoAll);
             this.Controls.Add(this.labelAutoAll);

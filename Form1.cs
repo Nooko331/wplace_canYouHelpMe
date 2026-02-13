@@ -202,10 +202,26 @@ public partial class Form1 : Form
         _state.SetLastActionTicks(nowTicks);
     }
 
+    private DateTime _autoFillAllStartTime;
+
+    private string GetEta(DateTime startTime, int current, int total)
+    {
+        if (current <= 0 || total <= 0 || current >= total) return "";
+        var elapsed = DateTime.Now - startTime;
+        if (elapsed.TotalSeconds < 1) return "";
+        var rate = current / elapsed.TotalSeconds;
+        var remaining = total - current;
+        if (rate <= 0) return "";
+        var etaSeconds = remaining / rate;
+        var eta = TimeSpan.FromSeconds(etaSeconds);
+        return $" ({eta:mm\\:ss})";
+    }
+
     private void UpdateUi((BgrColor? currentBgr, Point? currentPos, List<BgrColor> recordedBgrs,
         List<BgrColor> recordedBgrsRaw, Point? recordedPos, Rectangle? recordedRange,
         bool actionEnabled, bool autoFillEnabled, bool autoFillPrimed, bool autoFillReady,
-        int autoFillIndex, int autoFillPointsCount, long lastActionTicks, int scanTotal, int scanDone) snapshot, bool match)
+        int autoFillIndex, int autoFillPointsCount, long lastActionTicks, int scanTotal, int scanDone,
+        DateTime scanStartTime, DateTime autoFillStartTime) snapshot, bool match)
     {
         if (snapshot.recordedBgrsRaw.Count > 0)
         {
@@ -244,12 +260,12 @@ public partial class Form1 : Form
         var scanTotal = Math.Max(1, snapshot.scanTotal);
         progressScan.Maximum = scanTotal;
         progressScan.Value = Math.Min(snapshot.scanDone, scanTotal);
-        labelScanValue.Text = $"{snapshot.scanDone} / {snapshot.scanTotal}";
+        labelScanValue.Text = $"{snapshot.scanDone} / {snapshot.scanTotal}{GetEta(snapshot.scanStartTime, snapshot.scanDone, snapshot.scanTotal)}";
 
         var matchTotal = Math.Max(1, snapshot.autoFillPointsCount);
         progressMatch.Maximum = matchTotal;
         progressMatch.Value = Math.Min(snapshot.autoFillIndex, matchTotal);
-        labelMatchValue.Text = $"{snapshot.autoFillIndex} / {snapshot.autoFillPointsCount}";
+        labelMatchValue.Text = $"{snapshot.autoFillIndex} / {snapshot.autoFillPointsCount}{GetEta(snapshot.autoFillStartTime, snapshot.autoFillIndex, snapshot.autoFillPointsCount)}";
     }
 
     private void TrySetEnglishInputLanguage()
@@ -389,7 +405,7 @@ public partial class Form1 : Form
         int countX = ((width - 1) / _options.ScanStep) + 1;
         int countY = ((height - 1) / _options.ScanStep) + 1;
         int total = Math.Max(0, countX * countY);
-        _state.SetScanProgress(total, 0);
+        _state.StartScan(total);
         long lastProgressTicks = Environment.TickCount64;
         if (_options.Debug)
         {
@@ -617,7 +633,10 @@ public partial class Form1 : Form
         {
             return Math.Min(value, maxWorkers);
         }
-        return maxWorkers;
+        
+        MessageBox.Show("CPU核心数量设置异常，已自动修正为 1", "提示");
+        textCores.Text = "1";
+        return 1;
     }
 
     private int ReadScanStep()
@@ -1041,7 +1060,12 @@ public partial class Form1 : Form
 
         int width = Math.Max(1, rect.Width);
         int height = Math.Max(1, rect.Height);
+        int countX = ((width - 1) / _options.ScanStep) + 1;
         int countY = ((height - 1) / _options.ScanStep) + 1;
+        int total = Math.Max(0, countX * countY);
+        _state.StartScan(total);
+        int done = 0;
+        long lastProgressTicks = Environment.TickCount64;
         
         using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
         using (var g = Graphics.FromImage(bitmap))
@@ -1088,7 +1112,18 @@ public partial class Form1 : Form
                     }
                 }
             }
+            var newDone = Interlocked.Add(ref done, countX);
+            var now = Environment.TickCount64;
+            var prev = Interlocked.Read(ref lastProgressTicks);
+            if (now - prev >= 200)
+            {
+                 if (Interlocked.CompareExchange(ref lastProgressTicks, now, prev) == prev)
+                 {
+                     _state.SetScanProgress(total, newDone);
+                 }
+            }
         });
+        _state.SetScanProgress(total, done);
 
         var result = new Dictionary<BgrColor, List<Point>>();
         foreach (var kvp in groups)
@@ -1103,6 +1138,7 @@ public partial class Form1 : Form
 
     private void ExecuteAutoFillAll(Dictionary<BgrColor, List<Point>> groups, List<BgrColor> order, CancellationToken token)
     {
+        _autoFillAllStartTime = DateTime.Now;
         int total = groups.Values.Sum(l => l.Count);
         int processed = 0;
 
@@ -1153,7 +1189,7 @@ public partial class Form1 : Form
             {
                 progressAutoAll.Maximum = total;
                 progressAutoAll.Value = Math.Min(current, total);
-                labelAutoAllValue.Text = $"{current} / {total}";
+                labelAutoAllValue.Text = $"{current} / {total}{GetEta(_autoFillAllStartTime, current, total)}";
             }));
         }
     }
