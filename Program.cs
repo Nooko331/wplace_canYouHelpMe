@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -7,6 +8,10 @@ namespace WplaceColorWatch
 
 static class Program
 {
+    private const string SingleInstanceMutexName = @"Local\WplaceColorWatch.SingleInstance";
+    private const string ShowMainWindowMessageName = "WplaceColorWatch.ShowMainWindow";
+    private static Mutex? _singleInstanceMutex;
+
     /// <summary>
     ///  The main entry point for the application.
     /// </summary>
@@ -44,14 +49,43 @@ static class Program
                 // Ignore if not supported.
             }
         }
+
         Application.SetHighDpiMode(HighDpiMode.SystemAware);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+
+        bool createdNew;
+        _singleInstanceMutex = new Mutex(true, SingleInstanceMutexName, out createdNew);
+        if (!createdNew)
+        {
+            NotifyExistingInstance();
+            return;
+        }
+
         var options = ParseArgs(args);
         Logger.Init(options.Debug);
-        Application.Run(new Form1(options));
-        Logger.Shutdown();
-    }    
+        try
+        {
+            uint showMainWindowMessage = NativeMethods.RegisterWindowMessage(ShowMainWindowMessageName);
+            Application.Run(new Form1(options, showMainWindowMessage));
+        }
+        finally
+        {
+            Logger.Shutdown();
+            _singleInstanceMutex.ReleaseMutex();
+            _singleInstanceMutex.Dispose();
+            _singleInstanceMutex = null;
+        }
+    }
+
+    private static void NotifyExistingInstance()
+    {
+        uint showMainWindowMessage = NativeMethods.RegisterWindowMessage(ShowMainWindowMessageName);
+        if (showMainWindowMessage != 0)
+        {
+            NativeMethods.PostMessage(NativeMethods.HWND_BROADCAST, showMainWindowMessage, IntPtr.Zero, IntPtr.Zero);
+        }
+    }
 
     private static Options ParseArgs(string[] args)
     {
@@ -119,4 +153,3 @@ static class Program
     }
 }
 }
-

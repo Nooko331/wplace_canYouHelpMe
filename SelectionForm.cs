@@ -7,6 +7,10 @@ namespace WplaceColorWatch
 
     public sealed class SelectionForm : Form
     {
+        private static readonly Color SelectionAccentColor = Color.FromArgb(120, 255, 0, 0);
+        private static readonly Color SelectionOuterColor = Color.White;
+        private static readonly Color MaskColor = Color.FromArgb(140, 0, 0, 0);
+        private readonly Bitmap _screenSnapshot;
         private bool _dragging;
         private Point _start;
         private Point _end;
@@ -18,14 +22,28 @@ namespace WplaceColorWatch
         {
             _bounds = bounds;
             _scanStep = Math.Max(1, scanStep);
+            _screenSnapshot = new Bitmap(bounds.Width, bounds.Height);
+            using (var graphics = Graphics.FromImage(_screenSnapshot))
+            {
+                graphics.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size);
+            }
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
             Bounds = bounds;
             TopMost = true;
             BackColor = Color.Black;
-            Opacity = 0.5;
+            Opacity = 1;
             Cursor = Cursors.Cross;
             DoubleBuffered = true;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _screenSnapshot.Dispose();
+            }
+            base.Dispose(disposing);
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
@@ -91,13 +109,38 @@ namespace WplaceColorWatch
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
+            e.Graphics.DrawImageUnscaled(_screenSnapshot, 0, 0);
+            using var maskBrush = new SolidBrush(MaskColor);
+
             if (!_dragging)
             {
+                e.Graphics.FillRectangle(maskBrush, ClientRectangle);
                 return;
             }
+
             var rect = GetRect(_start, _end);
-            using var pen = new Pen(Color.Red, 8);
-            e.Graphics.DrawRectangle(pen, rect);
+
+            if (rect.Top > 0)
+            {
+                e.Graphics.FillRectangle(maskBrush, 0, 0, ClientSize.Width, rect.Top);
+            }
+            if (rect.Bottom < ClientSize.Height)
+            {
+                e.Graphics.FillRectangle(maskBrush, 0, rect.Bottom, ClientSize.Width, ClientSize.Height - rect.Bottom);
+            }
+            if (rect.Left > 0)
+            {
+                e.Graphics.FillRectangle(maskBrush, 0, rect.Top, rect.Left, rect.Height);
+            }
+            if (rect.Right < ClientSize.Width)
+            {
+                e.Graphics.FillRectangle(maskBrush, rect.Right, rect.Top, ClientSize.Width - rect.Right, rect.Height);
+            }
+
+            using var outerPen = new Pen(SelectionOuterColor, 3);
+            using var innerPen = new Pen(SelectionAccentColor, 1);
+            e.Graphics.DrawRectangle(outerPen, rect);
+            e.Graphics.DrawRectangle(innerPen, rect);
             DrawScanPoints(e.Graphics, rect);
         }
 
@@ -116,7 +159,7 @@ namespace WplaceColorWatch
             {
                 return;
             }
-            using var brush = new SolidBrush(Color.Red);
+            using var brush = new SolidBrush(SelectionAccentColor);
             const int dotSize = 5;
             for (int y = rect.Top; y <= rect.Bottom; y += _scanStep)
             {

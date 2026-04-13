@@ -17,15 +17,17 @@ namespace WplaceColorWatch
 public partial class Form1 : Form
 {
     private readonly Options _options;
+    private readonly uint _showMainWindowMessage;
     private readonly RuntimeState _state = new();
     private IntPtr _hookId = IntPtr.Zero;
     private NativeMethods.LowLevelKeyboardProc? _hookProc;
     private CancellationTokenSource? _scanCts;
     private CancellationTokenSource? _autoAllCts;
 
-    public Form1(Options options)
+    public Form1(Options options, uint showMainWindowMessage)
     {
         _options = options;
+        _showMainWindowMessage = showMainWindowMessage;
         InitializeComponent();
         MaximizeBox = false;
         KeyPreview = true;
@@ -45,7 +47,7 @@ public partial class Form1 : Form
         ScanStep.Text = _options.ScanStep.ToString();
 
         SetHook();
-        Shown += (_, _) => Activate();
+        Shown += (_, _) => BeginInvoke((Action)EnsureVisibleAndActivated);
     }
 
     protected override CreateParams CreateParams
@@ -70,6 +72,11 @@ public partial class Form1 : Form
         const int WM_SYSCOMMAND = 0x0112;
         const int SC_MAXIMIZE = 0xF030;
         const int WM_NCLBUTTONDBLCLK = 0x00A3;
+        if (m.Msg == _showMainWindowMessage)
+        {
+            EnsureVisibleAndActivated();
+            return;
+        }
         if (m.Msg == WM_NCLBUTTONDBLCLK)
         {
             return;
@@ -95,8 +102,39 @@ public partial class Form1 : Form
         base.OnMouseDown(e);
         if (!Focused)
         {
-            Activate();
+            EnsureVisibleAndActivated();
         }
+    }
+
+    private void EnsureVisibleAndActivated()
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke((Action)EnsureVisibleAndActivated);
+            return;
+        }
+
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        if (!Visible)
+        {
+            Show();
+        }
+
+        if (WindowState == FormWindowState.Minimized)
+        {
+            WindowState = FormWindowState.Normal;
+        }
+
+        NativeMethods.ShowWindow(Handle, NativeMethods.SW_RESTORE);
+        Show();
+        TopMost = true;
+        BringToFront();
+        Activate();
+        NativeMethods.SetForegroundWindow(Handle);
     }
 
     private void UpdateTimerOnTick(object? sender, EventArgs e)
