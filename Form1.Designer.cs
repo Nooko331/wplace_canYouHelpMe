@@ -34,6 +34,7 @@ partial class Form1
     private System.Windows.Forms.Label labelAutoAllValue;
     private System.Windows.Forms.Button btnToggleLayout;
     private System.Windows.Forms.LinkLabel linkGithubOrUpdate;
+    private System.Windows.Forms.Label labelCurrentVersion;
 
     /// <summary>
     ///  Clean up any resources being used.
@@ -92,6 +93,7 @@ partial class Form1
             this.labelAutoAllValue = new System.Windows.Forms.Label();
             this.btnToggleLayout = new System.Windows.Forms.Button();
             this.linkGithubOrUpdate = new System.Windows.Forms.LinkLabel();
+            this.labelCurrentVersion = new System.Windows.Forms.Label();
             this.panelLeft.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -403,11 +405,21 @@ partial class Form1
             this.linkGithubOrUpdate.TabStop = true;
             this.linkGithubOrUpdate.Text = "项目仓库（GitHub）";
             // 
+            // labelCurrentVersion
+            // 
+            this.labelCurrentVersion.AutoSize = true;
+            this.labelCurrentVersion.Location = new System.Drawing.Point(12, 589);
+            this.labelCurrentVersion.Name = "labelCurrentVersion";
+            this.labelCurrentVersion.Size = new System.Drawing.Size(121, 20);
+            this.labelCurrentVersion.TabIndex = 40;
+            this.labelCurrentVersion.Text = "当前版本: 1.0.1";
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 20F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(383, 630);
+            this.Controls.Add(this.labelCurrentVersion);
             this.Controls.Add(this.linkGithubOrUpdate);
             this.Controls.Add(this.btnToggleLayout);
             this.Controls.Add(this.labelAutoAllValue);

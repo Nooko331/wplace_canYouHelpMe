@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <AppVersion>1.0.3</AppVersion>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net5.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
@@ -9,10 +10,12 @@
     <LangVersion>9.0</LangVersion>
     <AssemblyName>wplace_canYouHelpMe</AssemblyName>
     <RootNamespace>wplace_canYouHelpMe</RootNamespace>
-    <Version>1.0.1</Version>
-    <FileVersion>1.0.1.0</FileVersion>
-    <AssemblyVersion>1.0.1.0</AssemblyVersion>
+    <Version>$(AppVersion)</Version>
+    <FileVersion>$(AppVersion).0</FileVersion>
+    <AssemblyVersion>$(AppVersion).0</AssemblyVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
 </Project>
+
+

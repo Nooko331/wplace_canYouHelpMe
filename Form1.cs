@@ -26,7 +26,6 @@ public partial class Form1 : Form
 
     private const string RepoUrl = "https://github.com/Nooko331/wplace_canYouHelpMe";
     private const string LatestReleaseApiUrl = "https://api.github.com/repos/Nooko331/wplace_canYouHelpMe/releases/latest";
-    private static readonly Version CurrentAppVersion = new(1, 0, 1);
     private const int DefaultScanWorkers = 1;
     private const int DefaultScanStep = 10;
 
@@ -43,6 +42,8 @@ public partial class Form1 : Form
     private bool _autoAllProgressActive;
     private UiLayoutMode _layoutMode = UiLayoutMode.Vertical;
     private string _updateTargetUrl = RepoUrl;
+    private readonly Version _currentAppVersion;
+    private readonly string _currentVersionText;
     private readonly Panel _compactDivider1 = new();
     private readonly Panel _compactDivider2 = new();
 
@@ -51,6 +52,8 @@ public partial class Form1 : Form
         _options = options;
         _showMainWindowMessage = showMainWindowMessage;
         InitializeComponent();
+        _currentAppVersion = GetCurrentAppVersion();
+        _currentVersionText = GetCurrentVersionText(_currentAppVersion);
         MaximizeBox = false;
         KeyPreview = true;
         TrySetEnglishInputLanguage();
@@ -74,6 +77,7 @@ public partial class Form1 : Form
         textCores.Text = _options.ScanWorkers.ToString();
         ScanStep.Text = _options.ScanStep.ToString();
         linkGithubOrUpdate.Text = "项目仓库（GitHub）";
+        labelCurrentVersion.Text = $"当前版本: {_currentVersionText}";
         _compactDivider1.Width = 2;
         _compactDivider1.BackColor = Color.Black;
         _compactDivider1.Visible = false;
@@ -1442,6 +1446,7 @@ public partial class Form1 : Form
                 progressAutoAll.Location = new Point(12, 585);
                 progressAutoAll.Size = new Size(351, 28);
                 linkGithubOrUpdate.Location = new Point(12, 641);
+                labelCurrentVersion.Location = new Point(12, 619);
                 btnToggleLayout.Text = "精简布局";
             }
             else
@@ -1509,6 +1514,7 @@ public partial class Form1 : Form
                 progressAutoAll.Size = new Size(250, 22);
 
                 // 区域1底部：入口
+                labelCurrentVersion.Location = new Point(10, 124);
                 linkGithubOrUpdate.Location = new Point(10, 146);
                 btnToggleLayout.Location = new Point(250, 143);
                 btnToggleLayout.Size = new Size(104, 26);
@@ -1557,7 +1563,7 @@ public partial class Form1 : Form
                 return;
             }
 
-            if (latestVersion <= CurrentAppVersion)
+            if (latestVersion <= _currentAppVersion)
             {
                 return;
             }
@@ -1615,6 +1621,23 @@ public partial class Form1 : Form
         return true;
     }
 
+    private static Version GetCurrentAppVersion()
+    {
+        if (TryParseVersion(Application.ProductVersion, out var parsed))
+        {
+            return parsed;
+        }
+
+        var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        return v ?? new Version(0, 0, 0, 0);
+    }
+
+    private static string GetCurrentVersionText(Version version)
+    {
+        int build = version.Build >= 0 ? version.Build : 0;
+        return $"{version.Major}.{version.Minor}.{build}";
+    }
+
     private static void OpenUrl(string url)
     {
         if (string.IsNullOrWhiteSpace(url))
@@ -1667,5 +1690,6 @@ public partial class Form1 : Form
         }
     }
 }
+
 
 
