@@ -32,6 +32,8 @@ partial class Form1
     private System.Windows.Forms.Label labelAutoAll;
     private System.Windows.Forms.ProgressBar progressAutoAll;
     private System.Windows.Forms.Label labelAutoAllValue;
+    private System.Windows.Forms.Button btnToggleLayout;
+    private System.Windows.Forms.LinkLabel linkGithubOrUpdate;
 
     /// <summary>
     ///  Clean up any resources being used.
@@ -88,6 +90,8 @@ partial class Form1
             this.labelAutoAll = new System.Windows.Forms.Label();
             this.progressAutoAll = new System.Windows.Forms.ProgressBar();
             this.labelAutoAllValue = new System.Windows.Forms.Label();
+            this.btnToggleLayout = new System.Windows.Forms.Button();
+            this.linkGithubOrUpdate = new System.Windows.Forms.LinkLabel();
             this.panelLeft.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -380,11 +384,32 @@ partial class Form1
             this.labelAutoAllValue.TabIndex = 37;
             this.labelAutoAllValue.Text = "0 / 0";
             // 
+            // btnToggleLayout
+            // 
+            this.btnToggleLayout.Location = new System.Drawing.Point(178, 520);
+            this.btnToggleLayout.Name = "btnToggleLayout";
+            this.btnToggleLayout.Size = new System.Drawing.Size(185, 26);
+            this.btnToggleLayout.TabIndex = 38;
+            this.btnToggleLayout.Text = "切换为横版布局";
+            this.btnToggleLayout.UseVisualStyleBackColor = true;
+            // 
+            // linkGithubOrUpdate
+            // 
+            this.linkGithubOrUpdate.AutoSize = true;
+            this.linkGithubOrUpdate.Location = new System.Drawing.Point(12, 609);
+            this.linkGithubOrUpdate.Name = "linkGithubOrUpdate";
+            this.linkGithubOrUpdate.Size = new System.Drawing.Size(115, 20);
+            this.linkGithubOrUpdate.TabIndex = 39;
+            this.linkGithubOrUpdate.TabStop = true;
+            this.linkGithubOrUpdate.Text = "项目仓库（GitHub）";
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 20F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(383, 630);
+            this.Controls.Add(this.linkGithubOrUpdate);
+            this.Controls.Add(this.btnToggleLayout);
             this.Controls.Add(this.labelAutoAllValue);
             this.Controls.Add(this.progressAutoAll);
             this.Controls.Add(this.labelAutoAll);

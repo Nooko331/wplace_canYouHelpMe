@@ -6,6 +6,8 @@ using System.Drawing.Imaging;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.IO;
+using System.Net.Http;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,6 +18,15 @@ namespace WplaceColorWatch
 
 public partial class Form1 : Form
 {
+    private enum UiLayoutMode
+    {
+        Vertical,
+        Horizontal
+    }
+
+    private const string RepoUrl = "https://github.com/Nooko331/wplace_canYouHelpMe";
+    private const string LatestReleaseApiUrl = "https://api.github.com/repos/Nooko331/wplace_canYouHelpMe/releases/latest";
+
     private readonly Options _options;
     private readonly uint _showMainWindowMessage;
     private readonly RuntimeState _state = new();
@@ -23,6 +34,8 @@ public partial class Form1 : Form
     private NativeMethods.LowLevelKeyboardProc? _hookProc;
     private CancellationTokenSource? _scanCts;
     private CancellationTokenSource? _autoAllCts;
+    private UiLayoutMode _layoutMode = UiLayoutMode.Vertical;
+    private string _updateTargetUrl = RepoUrl;
 
     public Form1(Options options, uint showMainWindowMessage)
     {
@@ -43,11 +56,16 @@ public partial class Form1 : Form
         btnFill.Click += (_, _) => BeginFill();
         btnAutoFillAll.Click += (_, _) => BeginAutoFillAll();
         btnAutoCores.Click += (_, _) => AutoDetectCores();
+        btnToggleLayout.Click += (_, _) => ToggleLayoutMode();
+        linkGithubOrUpdate.LinkClicked += (_, _) => OpenUrl(_updateTargetUrl);
         textCores.Text = _options.ScanWorkers.ToString();
         ScanStep.Text = _options.ScanStep.ToString();
+        linkGithubOrUpdate.Text = "项目仓库（GitHub）";
+        ApplyLayout(_layoutMode);
 
         SetHook();
         Shown += (_, _) => BeginInvoke((Action)EnsureVisibleAndActivated);
+        Shown += async (_, _) => await CheckLatestReleaseAsync();
     }
 
     protected override CreateParams CreateParams
@@ -1229,6 +1247,233 @@ public partial class Form1 : Form
                 progressAutoAll.Value = Math.Min(current, total);
                 labelAutoAllValue.Text = $"{current} / {total}{GetEta(_autoFillAllStartTime, current, total)}";
             }));
+        }
+    }
+
+    private void ToggleLayoutMode()
+    {
+        _layoutMode = _layoutMode == UiLayoutMode.Vertical ? UiLayoutMode.Horizontal : UiLayoutMode.Vertical;
+        ApplyLayout(_layoutMode);
+    }
+
+    private void ApplyLayout(UiLayoutMode mode)
+    {
+        SuspendLayout();
+        try
+        {
+            if (mode == UiLayoutMode.Vertical)
+            {
+                ClientSize = new Size(383, 630);
+                panelLeft.Location = new Point(12, 62);
+                panelLeft.Size = new Size(108, 50);
+                panelRight.Location = new Point(133, 62);
+                panelRight.Size = new Size(106, 50);
+                color1.Location = new Point(12, 39);
+                color2.Location = new Point(133, 39);
+                label1.Location = new Point(245, 62);
+                label2.Location = new Point(224, 273);
+                label3.Location = new Point(12, 9);
+                label4.Location = new Point(303, 157);
+                label5.Location = new Point(252, 198);
+                label6.Location = new Point(12, 127);
+                labelCores.Location = new Point(12, 160);
+                textCores.Location = new Point(119, 157);
+                btnAutoCores.Location = new Point(10, 198);
+                label7.Location = new Point(14, 234);
+                ScanStep.Location = new Point(89, 231);
+                label8.Location = new Point(176, 234);
+                btnRange.Location = new Point(12, 273);
+                RangeRecord.Location = new Point(12, 311);
+                TheRange.Location = new Point(113, 311);
+                btnFill.Location = new Point(12, 341);
+                label10.Location = new Point(167, 341);
+                labelScan.Location = new Point(14, 382);
+                labelScanValue.Location = new Point(160, 382);
+                progressScan.Location = new Point(14, 405);
+                progressScan.Size = new Size(351, 28);
+                labelMatchProgress.Location = new Point(17, 456);
+                labelMatchValue.Location = new Point(160, 456);
+                progressMatch.Location = new Point(12, 479);
+                progressMatch.Size = new Size(351, 28);
+                btnAutoFillAll.Location = new Point(12, 520);
+                btnAutoFillAll.Size = new Size(160, 26);
+                btnToggleLayout.Location = new Point(178, 520);
+                btnToggleLayout.Size = new Size(185, 26);
+                labelAutoAll.Location = new Point(17, 560);
+                labelAutoAllValue.Location = new Point(160, 560);
+                progressAutoAll.Location = new Point(12, 585);
+                progressAutoAll.Size = new Size(351, 28);
+                linkGithubOrUpdate.Location = new Point(12, 609);
+                btnToggleLayout.Text = "切换为横版布局";
+            }
+            else
+            {
+                ClientSize = new Size(1000, 360);
+                panelLeft.Location = new Point(12, 62);
+                panelLeft.Size = new Size(110, 50);
+                panelRight.Location = new Point(130, 62);
+                panelRight.Size = new Size(110, 50);
+                color1.Location = new Point(12, 39);
+                color2.Location = new Point(130, 39);
+                label1.Location = new Point(250, 62);
+                label2.Location = new Point(250, 156);
+                label3.Location = new Point(12, 9);
+                label4.Location = new Point(250, 118);
+                label5.Location = new Point(250, 188);
+                label6.Location = new Point(12, 127);
+                labelCores.Location = new Point(12, 160);
+                textCores.Location = new Point(119, 157);
+                btnAutoCores.Location = new Point(10, 198);
+                label7.Location = new Point(14, 234);
+                ScanStep.Location = new Point(89, 231);
+                label8.Location = new Point(176, 234);
+                btnRange.Location = new Point(12, 273);
+                RangeRecord.Location = new Point(140, 276);
+                TheRange.Location = new Point(226, 276);
+                btnFill.Location = new Point(12, 306);
+                label10.Location = new Point(110, 308);
+
+                labelScan.Location = new Point(380, 39);
+                labelScanValue.Location = new Point(535, 39);
+                progressScan.Location = new Point(380, 62);
+                progressScan.Size = new Size(600, 28);
+                labelMatchProgress.Location = new Point(380, 104);
+                labelMatchValue.Location = new Point(535, 104);
+                progressMatch.Location = new Point(380, 127);
+                progressMatch.Size = new Size(600, 28);
+                labelAutoAll.Location = new Point(380, 168);
+                labelAutoAllValue.Location = new Point(535, 168);
+                progressAutoAll.Location = new Point(380, 191);
+                progressAutoAll.Size = new Size(600, 28);
+
+                btnAutoFillAll.Location = new Point(380, 235);
+                btnAutoFillAll.Size = new Size(180, 30);
+                btnToggleLayout.Location = new Point(570, 235);
+                btnToggleLayout.Size = new Size(180, 30);
+                linkGithubOrUpdate.Location = new Point(380, 276);
+                btnToggleLayout.Text = "切换为竖版布局";
+            }
+        }
+        finally
+        {
+            ResumeLayout(performLayout: true);
+        }
+    }
+
+    private async Task CheckLatestReleaseAsync()
+    {
+        try
+        {
+            using var http = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(6)
+            };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("wplace_canYouHelpMe-update-check");
+            using var response = await http.GetAsync(LatestReleaseApiUrl);
+            if (!response.IsSuccessStatusCode)
+            {
+                return;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync();
+            using var json = await JsonDocument.ParseAsync(stream);
+            if (json.RootElement.TryGetProperty("prerelease", out var prereleaseElem) && prereleaseElem.GetBoolean())
+            {
+                return;
+            }
+
+            if (!json.RootElement.TryGetProperty("tag_name", out var tagElem))
+            {
+                return;
+            }
+
+            var latestTag = tagElem.GetString();
+            if (string.IsNullOrWhiteSpace(latestTag) || !TryParseVersion(latestTag, out var latestVersion))
+            {
+                return;
+            }
+
+            if (!TryParseVersion(Application.ProductVersion, out var currentVersion))
+            {
+                currentVersion = new Version(0, 0);
+            }
+
+            if (latestVersion <= currentVersion)
+            {
+                return;
+            }
+
+            string latestUrl = RepoUrl;
+            if (json.RootElement.TryGetProperty("html_url", out var htmlElem))
+            {
+                var parsed = htmlElem.GetString();
+                if (!string.IsNullOrWhiteSpace(parsed))
+                {
+                    latestUrl = parsed;
+                }
+            }
+
+            _updateTargetUrl = latestUrl;
+            linkGithubOrUpdate.Text = $"发现新版本 {latestTag}，点击下载";
+            linkGithubOrUpdate.LinkColor = Color.OrangeRed;
+        }
+        catch (Exception ex)
+        {
+            Logger.Debug($"[update] check failed: {ex.Message}");
+        }
+    }
+
+    private static bool TryParseVersion(string? text, out Version version)
+    {
+        version = new Version(0, 0);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        var normalized = text.Trim();
+        if (normalized.StartsWith("v", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized.Substring(1);
+        }
+
+        var match = Regex.Match(normalized, @"\d+(\.\d+){0,3}");
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        var parts = match.Value.Split('.')
+            .Select(part => int.TryParse(part, out var n) ? n : 0)
+            .ToList();
+
+        while (parts.Count < 4)
+        {
+            parts.Add(0);
+        }
+
+        version = new Version(parts[0], parts[1], parts[2], parts[3]);
+        return true;
+    }
+
+    private static void OpenUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return;
+        }
+
+        try
+        {
+            using var _ = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // Ignore if shell open is unavailable.
         }
     }
 
