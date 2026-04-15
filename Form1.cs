@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
@@ -26,6 +26,8 @@ public partial class Form1 : Form
 
     private const string RepoUrl = "https://github.com/Nooko331/wplace_canYouHelpMe";
     private const string LatestReleaseApiUrl = "https://api.github.com/repos/Nooko331/wplace_canYouHelpMe/releases/latest";
+    private const int DefaultScanWorkers = 1;
+    private const int DefaultScanStep = 10;
 
     private readonly Options _options;
     private readonly uint _showMainWindowMessage;
@@ -58,6 +60,8 @@ public partial class Form1 : Form
         btnAutoCores.Click += (_, _) => AutoDetectCores();
         btnToggleLayout.Click += (_, _) => ToggleLayoutMode();
         linkGithubOrUpdate.LinkClicked += (_, _) => OpenUrl(_updateTargetUrl);
+        textCores.Leave += (_, _) => _options.ScanWorkers = ReadScanWorkers();
+        ScanStep.Leave += (_, _) => _options.ScanStep = ReadScanStep();
         textCores.Text = _options.ScanWorkers.ToString();
         ScanStep.Text = _options.ScanStep.ToString();
         linkGithubOrUpdate.Text = "项目仓库（GitHub）";
@@ -162,7 +166,7 @@ public partial class Form1 : Form
         _state.UpdateCurrent(bgr, pos);
 
         var snapshot = _state.Snapshot();
-        // 目前S键自动滑动检测精度极其不准确，暂时关闭
+        // 鐩墠S閿嚜鍔ㄦ粦鍔ㄦ娴嬬簿搴︽瀬鍏朵笉鍑嗙‘锛屾殏鏃跺叧闂?
         bool match = false;
         // bool isOverSelf = IsCursorOverSelf(pos);
         // int minDiff = int.MaxValue;
@@ -295,7 +299,7 @@ public partial class Form1 : Form
             color1.Text = "当前记录颜色1";
             color2.Text = "当前记录颜色2";
         }
-        // 目前S键自动滑动检测精度极其不准确，暂时关闭
+        // 鐩墠S閿嚜鍔ㄦ粦鍔ㄦ娴嬬簿搴︽瀬鍏朵笉鍑嗙‘锛屾殏鏃跺叧闂?
         // labelMatch.Visible = match;
         // labelX.Text = snapshot.actionEnabled ? "S:ON" : "S:OFF";
         // labelX.ForeColor = snapshot.actionEnabled ? Color.Green : Color.Red;
@@ -685,14 +689,14 @@ public partial class Form1 : Form
     private int ReadScanWorkers()
     {
         int maxWorkers = Math.Max(1, Environment.ProcessorCount - 1);
-        if (int.TryParse(textCores.Text, out var value) && value > 0)
+        if (int.TryParse(textCores.Text, out var value) && value > 0 && value <= maxWorkers)
         {
-            return Math.Min(value, maxWorkers);
+            return value;
         }
-        
-        MessageBox.Show("CPU核心数量设置异常，已自动修正为 1", "提示");
-        textCores.Text = "1";
-        return 1;
+
+        textCores.Text = DefaultScanWorkers.ToString();
+        ShowInvalidInputMessage();
+        return DefaultScanWorkers;
     }
 
     private int ReadScanStep()
@@ -701,7 +705,15 @@ public partial class Form1 : Form
         {
             return value;
         }
-        return Math.Max(1, _options.ScanStep);
+
+        ScanStep.Text = DefaultScanStep.ToString();
+        ShowInvalidInputMessage();
+        return DefaultScanStep;
+    }
+
+    private static void ShowInvalidInputMessage()
+    {
+        MessageBox.Show("输入内容无效。", "提示");
     }
 
     private void AutoDetectCores()
@@ -880,7 +892,7 @@ public partial class Form1 : Form
                     CancelAutoAll();
                 }));
             }
-            // 目前S键自动滑动检测精度极其不准确，暂时关闭
+            // 鐩墠S閿嚜鍔ㄦ粦鍔ㄦ娴嬬簿搴︽瀬鍏朵笉鍑嗙‘锛屾殏鏃跺叧闂?
             // else if (vkCode == NativeMethods.VK_S)
             // {
             //     BeginInvoke((Action)(() =>
@@ -1263,7 +1275,7 @@ public partial class Form1 : Form
         {
             if (mode == UiLayoutMode.Vertical)
             {
-                ClientSize = new Size(383, 630);
+                ClientSize = new Size(383, 670);
                 panelLeft.Location = new Point(12, 62);
                 panelLeft.Size = new Size(108, 50);
                 panelRight.Location = new Point(133, 62);
@@ -1297,29 +1309,30 @@ public partial class Form1 : Form
                 progressMatch.Size = new Size(351, 28);
                 btnAutoFillAll.Location = new Point(12, 520);
                 btnAutoFillAll.Size = new Size(160, 26);
-                btnToggleLayout.Location = new Point(178, 520);
-                btnToggleLayout.Size = new Size(185, 26);
+                btnToggleLayout.Location = new Point(218, 637);
+                btnToggleLayout.Size = new Size(145, 26);
                 labelAutoAll.Location = new Point(17, 560);
                 labelAutoAllValue.Location = new Point(160, 560);
                 progressAutoAll.Location = new Point(12, 585);
                 progressAutoAll.Size = new Size(351, 28);
-                linkGithubOrUpdate.Location = new Point(12, 609);
+                linkGithubOrUpdate.Location = new Point(12, 641);
                 btnToggleLayout.Text = "切换为横版布局";
             }
             else
             {
-                ClientSize = new Size(1000, 360);
+                ClientSize = new Size(900, 330);
+                // 上半部分（到范围记录）保持竖版原位，下半部分移动到右侧
                 panelLeft.Location = new Point(12, 62);
-                panelLeft.Size = new Size(110, 50);
-                panelRight.Location = new Point(130, 62);
-                panelRight.Size = new Size(110, 50);
+                panelLeft.Size = new Size(108, 50);
+                panelRight.Location = new Point(133, 62);
+                panelRight.Size = new Size(106, 50);
                 color1.Location = new Point(12, 39);
-                color2.Location = new Point(130, 39);
-                label1.Location = new Point(250, 62);
-                label2.Location = new Point(250, 156);
+                color2.Location = new Point(133, 39);
+                label1.Location = new Point(245, 62);
+                label2.Location = new Point(224, 273);
                 label3.Location = new Point(12, 9);
-                label4.Location = new Point(250, 118);
-                label5.Location = new Point(250, 188);
+                label4.Location = new Point(303, 157);
+                label5.Location = new Point(252, 198);
                 label6.Location = new Point(12, 127);
                 labelCores.Location = new Point(12, 160);
                 textCores.Location = new Point(119, 157);
@@ -1328,29 +1341,30 @@ public partial class Form1 : Form
                 ScanStep.Location = new Point(89, 231);
                 label8.Location = new Point(176, 234);
                 btnRange.Location = new Point(12, 273);
-                RangeRecord.Location = new Point(140, 276);
-                TheRange.Location = new Point(226, 276);
-                btnFill.Location = new Point(12, 306);
-                label10.Location = new Point(110, 308);
+                RangeRecord.Location = new Point(12, 311);
+                TheRange.Location = new Point(113, 311);
 
-                labelScan.Location = new Point(380, 39);
-                labelScanValue.Location = new Point(535, 39);
-                progressScan.Location = new Point(380, 62);
-                progressScan.Size = new Size(600, 28);
-                labelMatchProgress.Location = new Point(380, 104);
-                labelMatchValue.Location = new Point(535, 104);
-                progressMatch.Location = new Point(380, 127);
-                progressMatch.Size = new Size(600, 28);
-                labelAutoAll.Location = new Point(380, 168);
-                labelAutoAllValue.Location = new Point(535, 168);
-                progressAutoAll.Location = new Point(380, 191);
-                progressAutoAll.Size = new Size(600, 28);
+                btnFill.Location = new Point(410, 30);
+                label10.Location = new Point(510, 34);
 
-                btnAutoFillAll.Location = new Point(380, 235);
-                btnAutoFillAll.Size = new Size(180, 30);
-                btnToggleLayout.Location = new Point(570, 235);
-                btnToggleLayout.Size = new Size(180, 30);
-                linkGithubOrUpdate.Location = new Point(380, 276);
+                labelScan.Location = new Point(410, 66);
+                labelScanValue.Location = new Point(566, 66);
+                progressScan.Location = new Point(410, 89);
+                progressScan.Size = new Size(470, 24);
+                labelMatchProgress.Location = new Point(410, 126);
+                labelMatchValue.Location = new Point(566, 126);
+                progressMatch.Location = new Point(410, 149);
+                progressMatch.Size = new Size(470, 24);
+                labelAutoAll.Location = new Point(410, 186);
+                labelAutoAllValue.Location = new Point(566, 186);
+                progressAutoAll.Location = new Point(410, 209);
+                progressAutoAll.Size = new Size(470, 24);
+                btnAutoFillAll.Location = new Point(410, 246);
+                btnAutoFillAll.Size = new Size(160, 26);
+
+                linkGithubOrUpdate.Location = new Point(410, 300);
+                btnToggleLayout.Location = new Point(735, 297);
+                btnToggleLayout.Size = new Size(145, 26);
                 btnToggleLayout.Text = "切换为竖版布局";
             }
         }
@@ -1508,4 +1522,5 @@ public partial class Form1 : Form
         }
     }
 }
+
 
