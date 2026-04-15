@@ -306,14 +306,14 @@ public partial class Form1 : Form
         if (snapshot.recordedRange.HasValue)
         {
             RangeRecord.ForeColor = Color.Green;
-            RangeRecord.Text = "范围已记录";
+            RangeRecord.Text = "已记录";
             var rect = snapshot.recordedRange.Value;
             TheRange.Text = $"{rect.X},{rect.Y},{rect.Width},{rect.Height}";
         }
         else
         {
             RangeRecord.ForeColor = Color.Red;
-            RangeRecord.Text = "范围未记录";
+            RangeRecord.Text = "未记录";
             TheRange.Text = "0";
         }
 
@@ -326,6 +326,30 @@ public partial class Form1 : Form
         progressMatch.Maximum = matchTotal;
         progressMatch.Value = Math.Min(snapshot.autoFillIndex, matchTotal);
         labelMatchValue.Text = $"{snapshot.autoFillIndex} / {snapshot.autoFillPointsCount}{GetEta(snapshot.autoFillStartTime, snapshot.autoFillIndex, snapshot.autoFillPointsCount)}";
+
+        if (_layoutMode == UiLayoutMode.Horizontal)
+        {
+            int total = 0;
+            int current = 0;
+            DateTime start = DateTime.Now;
+
+            if (snapshot.autoFillPointsCount > 0)
+            {
+                total = snapshot.autoFillPointsCount;
+                current = snapshot.autoFillIndex;
+                start = snapshot.autoFillStartTime;
+            }
+            else if (snapshot.scanTotal > 0)
+            {
+                total = snapshot.scanTotal;
+                current = snapshot.scanDone;
+                start = snapshot.scanStartTime;
+            }
+
+            progressAutoAll.Maximum = Math.Max(1, total);
+            progressAutoAll.Value = Math.Min(Math.Max(0, current), progressAutoAll.Maximum);
+            labelAutoAllValue.Text = $"{current} / {total}{GetEta(start, current, total)}";
+        }
     }
 
     private void TrySetEnglishInputLanguage()
@@ -1276,10 +1300,31 @@ public partial class Form1 : Form
             if (mode == UiLayoutMode.Vertical)
             {
                 ClientSize = new Size(383, 670);
+                label1.Visible = true;
+                label2.Visible = true;
+                label4.Visible = true;
+                label5.Visible = true;
+                label6.Visible = true;
+                label8.Visible = true;
+                label10.Visible = true;
+                TheRange.Visible = true;
+                labelScan.Visible = true;
+                labelScanValue.Visible = true;
+                progressScan.Visible = true;
+                labelMatchProgress.Visible = true;
+                labelMatchValue.Visible = true;
+                progressMatch.Visible = true;
                 panelLeft.Location = new Point(12, 62);
                 panelLeft.Size = new Size(108, 50);
                 panelRight.Location = new Point(133, 62);
                 panelRight.Size = new Size(106, 50);
+                labelCores.Text = "调用CPU数量";
+                btnAutoCores.Text = "自动决定CPU数量";
+                label7.Text = "扫描步长";
+                btnRange.Text = "划取检测范围";
+                btnFill.Text = "自动填充";
+                btnAutoFillAll.Text = "全自动检测及填充";
+                labelAutoAll.Text = "全自动填充进度";
                 color1.Location = new Point(12, 39);
                 color2.Location = new Point(133, 39);
                 label1.Location = new Point(245, 62);
@@ -1290,14 +1335,19 @@ public partial class Form1 : Form
                 label6.Location = new Point(12, 127);
                 labelCores.Location = new Point(12, 160);
                 textCores.Location = new Point(119, 157);
+                textCores.Size = new Size(40, 27);
                 btnAutoCores.Location = new Point(10, 198);
+                btnAutoCores.Size = new Size(142, 26);
                 label7.Location = new Point(14, 234);
                 ScanStep.Location = new Point(89, 231);
+                ScanStep.Size = new Size(69, 27);
                 label8.Location = new Point(176, 234);
                 btnRange.Location = new Point(12, 273);
+                btnRange.Size = new Size(122, 26);
                 RangeRecord.Location = new Point(12, 311);
                 TheRange.Location = new Point(113, 311);
                 btnFill.Location = new Point(12, 341);
+                btnFill.Size = new Size(89, 26);
                 label10.Location = new Point(167, 341);
                 labelScan.Location = new Point(14, 382);
                 labelScanValue.Location = new Point(160, 382);
@@ -1316,56 +1366,70 @@ public partial class Form1 : Form
                 progressAutoAll.Location = new Point(12, 585);
                 progressAutoAll.Size = new Size(351, 28);
                 linkGithubOrUpdate.Location = new Point(12, 641);
-                btnToggleLayout.Text = "切换为横版布局";
+                btnToggleLayout.Text = "精简布局";
             }
             else
             {
-                ClientSize = new Size(900, 330);
-                // 上半部分（到范围记录）保持竖版原位，下半部分移动到右侧
-                panelLeft.Location = new Point(12, 62);
+                ClientSize = new Size(370, 350);
+                label1.Visible = false;
+                label2.Visible = false;
+                label4.Visible = false;
+                label5.Visible = false;
+                label6.Visible = false;
+                label8.Visible = false;
+                label10.Visible = false;
+                TheRange.Visible = false;
+                labelScan.Visible = false;
+                labelScanValue.Visible = false;
+                progressScan.Visible = false;
+                labelMatchProgress.Visible = false;
+                labelMatchValue.Visible = false;
+                progressMatch.Visible = false;
+
+                label3.Location = new Point(10, 8);
+                panelLeft.Location = new Point(10, 56);
                 panelLeft.Size = new Size(108, 50);
-                panelRight.Location = new Point(133, 62);
+                panelRight.Location = new Point(128, 56);
                 panelRight.Size = new Size(106, 50);
-                color1.Location = new Point(12, 39);
-                color2.Location = new Point(133, 39);
-                label1.Location = new Point(245, 62);
-                label2.Location = new Point(224, 273);
-                label3.Location = new Point(12, 9);
-                label4.Location = new Point(303, 157);
-                label5.Location = new Point(252, 198);
-                label6.Location = new Point(12, 127);
-                labelCores.Location = new Point(12, 160);
-                textCores.Location = new Point(119, 157);
-                btnAutoCores.Location = new Point(10, 198);
-                label7.Location = new Point(14, 234);
-                ScanStep.Location = new Point(89, 231);
-                label8.Location = new Point(176, 234);
-                btnRange.Location = new Point(12, 273);
-                RangeRecord.Location = new Point(12, 311);
-                TheRange.Location = new Point(113, 311);
+                color1.Location = new Point(10, 33);
+                color2.Location = new Point(128, 33);
 
-                btnFill.Location = new Point(410, 30);
-                label10.Location = new Point(510, 34);
+                labelCores.Text = "cpu";
+                labelCores.Location = new Point(10, 122);
+                textCores.Location = new Point(48, 119);
+                textCores.Size = new Size(40, 27);
+                btnAutoCores.Text = "自动";
+                btnAutoCores.Location = new Point(94, 119);
+                btnAutoCores.Size = new Size(56, 26);
 
-                labelScan.Location = new Point(410, 66);
-                labelScanValue.Location = new Point(566, 66);
-                progressScan.Location = new Point(410, 89);
-                progressScan.Size = new Size(470, 24);
-                labelMatchProgress.Location = new Point(410, 126);
-                labelMatchValue.Location = new Point(566, 126);
-                progressMatch.Location = new Point(410, 149);
-                progressMatch.Size = new Size(470, 24);
-                labelAutoAll.Location = new Point(410, 186);
-                labelAutoAllValue.Location = new Point(566, 186);
-                progressAutoAll.Location = new Point(410, 209);
-                progressAutoAll.Size = new Size(470, 24);
-                btnAutoFillAll.Location = new Point(410, 246);
-                btnAutoFillAll.Size = new Size(160, 26);
+                label7.Text = "步长";
+                label7.Location = new Point(10, 156);
+                ScanStep.Location = new Point(48, 153);
+                ScanStep.Size = new Size(60, 27);
 
-                linkGithubOrUpdate.Location = new Point(410, 300);
-                btnToggleLayout.Location = new Point(735, 297);
-                btnToggleLayout.Size = new Size(145, 26);
-                btnToggleLayout.Text = "切换为竖版布局";
+                btnRange.Text = "划取";
+                btnRange.Location = new Point(10, 188);
+                btnRange.Size = new Size(58, 26);
+                RangeRecord.Location = new Point(74, 192);
+
+                btnFill.Text = "自动";
+                btnFill.Location = new Point(10, 222);
+                btnFill.Size = new Size(58, 26);
+
+                btnAutoFillAll.Text = "全自动";
+                btnAutoFillAll.Location = new Point(74, 222);
+                btnAutoFillAll.Size = new Size(76, 26);
+
+                labelAutoAll.Text = "总进度";
+                labelAutoAll.Location = new Point(10, 258);
+                labelAutoAllValue.Location = new Point(80, 258);
+                progressAutoAll.Location = new Point(10, 281);
+                progressAutoAll.Size = new Size(350, 22);
+
+                linkGithubOrUpdate.Location = new Point(10, 320);
+                btnToggleLayout.Location = new Point(256, 317);
+                btnToggleLayout.Size = new Size(104, 26);
+                btnToggleLayout.Text = "完整布局";
             }
         }
         finally
