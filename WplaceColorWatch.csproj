@@ -9,6 +9,10 @@
     <LangVersion>9.0</LangVersion>
     <AssemblyName>wplace_canYouHelpMe</AssemblyName>
     <RootNamespace>wplace_canYouHelpMe</RootNamespace>
+    <Version>1.0.1</Version>
+    <FileVersion>1.0.1.0</FileVersion>
+    <AssemblyVersion>1.0.1.0</AssemblyVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
 </Project>

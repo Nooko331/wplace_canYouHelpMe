@@ -26,6 +26,7 @@ public partial class Form1 : Form
 
     private const string RepoUrl = "https://github.com/Nooko331/wplace_canYouHelpMe";
     private const string LatestReleaseApiUrl = "https://api.github.com/repos/Nooko331/wplace_canYouHelpMe/releases/latest";
+    private static readonly Version CurrentAppVersion = new(1, 0, 1);
     private const int DefaultScanWorkers = 1;
     private const int DefaultScanStep = 10;
 
@@ -36,8 +37,14 @@ public partial class Form1 : Form
     private NativeMethods.LowLevelKeyboardProc? _hookProc;
     private CancellationTokenSource? _scanCts;
     private CancellationTokenSource? _autoAllCts;
+    private int _autoAllProgressCurrent;
+    private int _autoAllProgressTotal;
+    private DateTime _autoAllProgressStart;
+    private bool _autoAllProgressActive;
     private UiLayoutMode _layoutMode = UiLayoutMode.Vertical;
     private string _updateTargetUrl = RepoUrl;
+    private readonly Panel _compactDivider1 = new();
+    private readonly Panel _compactDivider2 = new();
 
     public Form1(Options options, uint showMainWindowMessage)
     {
@@ -62,9 +69,19 @@ public partial class Form1 : Form
         linkGithubOrUpdate.LinkClicked += (_, _) => OpenUrl(_updateTargetUrl);
         textCores.Leave += (_, _) => _options.ScanWorkers = ReadScanWorkers();
         ScanStep.Leave += (_, _) => _options.ScanStep = ReadScanStep();
+        textCores.KeyDown += NumericTextBoxOnKeyDown;
+        ScanStep.KeyDown += NumericTextBoxOnKeyDown;
         textCores.Text = _options.ScanWorkers.ToString();
         ScanStep.Text = _options.ScanStep.ToString();
         linkGithubOrUpdate.Text = "项目仓库（GitHub）";
+        _compactDivider1.Width = 2;
+        _compactDivider1.BackColor = Color.Black;
+        _compactDivider1.Visible = false;
+        _compactDivider2.Width = 2;
+        _compactDivider2.BackColor = Color.Black;
+        _compactDivider2.Visible = false;
+        Controls.Add(_compactDivider1);
+        Controls.Add(_compactDivider2);
         ApplyLayout(_layoutMode);
 
         SetHook();
@@ -317,38 +334,53 @@ public partial class Form1 : Form
             TheRange.Text = "0";
         }
 
+        bool scanRunning = _scanCts != null || _autoAllCts != null;
+        bool matchRunning = snapshot.autoFillEnabled && snapshot.autoFillReady;
+
         var scanTotal = Math.Max(1, snapshot.scanTotal);
         progressScan.Maximum = scanTotal;
         progressScan.Value = Math.Min(snapshot.scanDone, scanTotal);
-        labelScanValue.Text = $"{snapshot.scanDone} / {snapshot.scanTotal}{GetEta(snapshot.scanStartTime, snapshot.scanDone, snapshot.scanTotal)}";
+        var scanEta = scanRunning ? GetEta(snapshot.scanStartTime, snapshot.scanDone, snapshot.scanTotal) : "";
+        labelScanValue.Text = $"{snapshot.scanDone} / {snapshot.scanTotal}{scanEta}";
 
         var matchTotal = Math.Max(1, snapshot.autoFillPointsCount);
         progressMatch.Maximum = matchTotal;
         progressMatch.Value = Math.Min(snapshot.autoFillIndex, matchTotal);
-        labelMatchValue.Text = $"{snapshot.autoFillIndex} / {snapshot.autoFillPointsCount}{GetEta(snapshot.autoFillStartTime, snapshot.autoFillIndex, snapshot.autoFillPointsCount)}";
+        var matchEta = matchRunning ? GetEta(snapshot.autoFillStartTime, snapshot.autoFillIndex, snapshot.autoFillPointsCount) : "";
+        labelMatchValue.Text = $"{snapshot.autoFillIndex} / {snapshot.autoFillPointsCount}{matchEta}";
 
         if (_layoutMode == UiLayoutMode.Horizontal)
         {
             int total = 0;
             int current = 0;
             DateTime start = DateTime.Now;
-
-            if (snapshot.autoFillPointsCount > 0)
+            bool isRunning = false;
+            if (_autoAllProgressTotal > 0 && (_autoAllProgressActive || _autoAllProgressCurrent > 0))
+            {
+                total = _autoAllProgressTotal;
+                current = _autoAllProgressCurrent;
+                start = _autoAllProgressStart;
+                isRunning = _autoAllProgressActive;
+            }
+            else if (snapshot.autoFillPointsCount > 0)
             {
                 total = snapshot.autoFillPointsCount;
                 current = snapshot.autoFillIndex;
                 start = snapshot.autoFillStartTime;
+                isRunning = matchRunning;
             }
             else if (snapshot.scanTotal > 0)
             {
                 total = snapshot.scanTotal;
                 current = snapshot.scanDone;
                 start = snapshot.scanStartTime;
+                isRunning = scanRunning;
             }
 
             progressAutoAll.Maximum = Math.Max(1, total);
             progressAutoAll.Value = Math.Min(Math.Max(0, current), progressAutoAll.Maximum);
-            labelAutoAllValue.Text = $"{current} / {total}{GetEta(start, current, total)}";
+            var totalEta = isRunning ? GetEta(start, current, total) : "";
+            labelAutoAllValue.Text = $"{current} / {total}{totalEta}";
         }
     }
 
@@ -740,6 +772,26 @@ public partial class Form1 : Form
         MessageBox.Show("输入内容无效。", "提示");
     }
 
+    private void NumericTextBoxOnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode != Keys.Enter)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(sender, textCores))
+        {
+            _options.ScanWorkers = ReadScanWorkers();
+        }
+        else if (ReferenceEquals(sender, ScanStep))
+        {
+            _options.ScanStep = ReadScanStep();
+        }
+
+        e.SuppressKeyPress = true;
+        e.Handled = true;
+    }
+
     private void AutoDetectCores()
     {
         int half = Math.Max(1, Environment.ProcessorCount / 2);
@@ -989,6 +1041,7 @@ public partial class Form1 : Form
 
     private void CancelAutoAll()
     {
+        _autoAllProgressActive = false;
         var cts = Interlocked.Exchange(ref _autoAllCts, null);
         if (cts != null)
         {
@@ -1037,6 +1090,10 @@ public partial class Form1 : Form
         CancelAutoAll();
         _autoAllCts = new CancellationTokenSource();
         var token = _autoAllCts.Token;
+        _autoAllProgressCurrent = 0;
+        _autoAllProgressTotal = 0;
+        _autoAllProgressStart = DateTime.Now;
+        _autoAllProgressActive = true;
 
         Task.Run(() =>
         {
@@ -1050,9 +1107,16 @@ public partial class Form1 : Form
                 Logger.Debug($"[auto_all] scan done. total_points={totalPoints}");
                 
                 BeginInvoke((Action)(() => {
-                    progressAutoAll.Maximum = totalPoints;
-                    progressAutoAll.Value = 0;
-                    labelAutoAllValue.Text = $"0 / {totalPoints}";
+                    _autoAllProgressCurrent = 0;
+                    _autoAllProgressTotal = totalPoints;
+                    _autoAllProgressStart = DateTime.Now;
+                    _autoAllProgressActive = true;
+                    if (_layoutMode != UiLayoutMode.Horizontal)
+                    {
+                        progressAutoAll.Maximum = totalPoints;
+                        progressAutoAll.Value = 0;
+                        labelAutoAllValue.Text = $"0 / {totalPoints}";
+                    }
                 }));
 
                 ExecuteAutoFillAll(groups, htmlColors, token);
@@ -1065,6 +1129,7 @@ public partial class Form1 : Form
             {
                 BeginInvoke((Action)(() =>
                 {
+                    _autoAllProgressActive = false;
                     btnAutoFillAll.Enabled = true;
                     btnFill.Enabled = true;
                     btnRange.Enabled = true;
@@ -1279,9 +1344,16 @@ public partial class Form1 : Form
         {
             BeginInvoke((Action)(() =>
             {
-                progressAutoAll.Maximum = total;
-                progressAutoAll.Value = Math.Min(current, total);
-                labelAutoAllValue.Text = $"{current} / {total}{GetEta(_autoFillAllStartTime, current, total)}";
+                _autoAllProgressCurrent = current;
+                _autoAllProgressTotal = total;
+                _autoAllProgressStart = _autoFillAllStartTime;
+                _autoAllProgressActive = current < total;
+                if (_layoutMode != UiLayoutMode.Horizontal)
+                {
+                    progressAutoAll.Maximum = total;
+                    progressAutoAll.Value = Math.Min(current, total);
+                    labelAutoAllValue.Text = $"{current} / {total}{GetEta(_autoFillAllStartTime, current, total)}";
+                }
             }));
         }
     }
@@ -1300,6 +1372,10 @@ public partial class Form1 : Form
             if (mode == UiLayoutMode.Vertical)
             {
                 ClientSize = new Size(383, 670);
+                _compactDivider1.Visible = false;
+                _compactDivider2.Visible = false;
+                color1.Visible = true;
+                color2.Visible = true;
                 label1.Visible = true;
                 label2.Visible = true;
                 label4.Visible = true;
@@ -1370,7 +1446,11 @@ public partial class Form1 : Form
             }
             else
             {
-                ClientSize = new Size(370, 350);
+                ClientSize = new Size(700, 180);
+                _compactDivider1.Visible = true;
+                _compactDivider2.Visible = false;
+                color1.Visible = false;
+                color2.Visible = false;
                 label1.Visible = false;
                 label2.Visible = false;
                 label4.Visible = false;
@@ -1386,6 +1466,7 @@ public partial class Form1 : Form
                 labelMatchValue.Visible = false;
                 progressMatch.Visible = false;
 
+                // 区域1：颜色/CPU/步长/划取
                 label3.Location = new Point(10, 8);
                 panelLeft.Location = new Point(10, 56);
                 panelLeft.Size = new Size(108, 50);
@@ -1395,41 +1476,46 @@ public partial class Form1 : Form
                 color2.Location = new Point(128, 33);
 
                 labelCores.Text = "cpu";
-                labelCores.Location = new Point(10, 122);
-                textCores.Location = new Point(48, 119);
+                labelCores.Location = new Point(248, 32);
+                textCores.Location = new Point(286, 29);
                 textCores.Size = new Size(40, 27);
                 btnAutoCores.Text = "自动";
-                btnAutoCores.Location = new Point(94, 119);
+                btnAutoCores.Location = new Point(332, 29);
                 btnAutoCores.Size = new Size(56, 26);
 
                 label7.Text = "步长";
-                label7.Location = new Point(10, 156);
-                ScanStep.Location = new Point(48, 153);
+                label7.Location = new Point(248, 66);
+                ScanStep.Location = new Point(286, 63);
                 ScanStep.Size = new Size(60, 27);
 
                 btnRange.Text = "划取";
-                btnRange.Location = new Point(10, 188);
+                btnRange.Location = new Point(248, 98);
                 btnRange.Size = new Size(58, 26);
-                RangeRecord.Location = new Point(74, 192);
+                RangeRecord.Location = new Point(312, 102);
 
+                // 区域2：动作按钮 + 进度
                 btnFill.Text = "自动";
-                btnFill.Location = new Point(10, 222);
+                btnFill.Location = new Point(430, 20);
                 btnFill.Size = new Size(58, 26);
 
                 btnAutoFillAll.Text = "全自动";
-                btnAutoFillAll.Location = new Point(74, 222);
+                btnAutoFillAll.Location = new Point(494, 20);
                 btnAutoFillAll.Size = new Size(76, 26);
 
                 labelAutoAll.Text = "总进度";
-                labelAutoAll.Location = new Point(10, 258);
-                labelAutoAllValue.Location = new Point(80, 258);
-                progressAutoAll.Location = new Point(10, 281);
-                progressAutoAll.Size = new Size(350, 22);
+                labelAutoAll.Location = new Point(430, 58);
+                labelAutoAllValue.Location = new Point(500, 58);
+                progressAutoAll.Location = new Point(430, 82);
+                progressAutoAll.Size = new Size(250, 22);
 
-                linkGithubOrUpdate.Location = new Point(10, 320);
-                btnToggleLayout.Location = new Point(256, 317);
+                // 区域1底部：入口
+                linkGithubOrUpdate.Location = new Point(10, 146);
+                btnToggleLayout.Location = new Point(250, 143);
                 btnToggleLayout.Size = new Size(104, 26);
                 btnToggleLayout.Text = "完整布局";
+
+                _compactDivider1.Location = new Point(410, 16);
+                _compactDivider1.Height = 140;
             }
         }
         finally
@@ -1471,12 +1557,7 @@ public partial class Form1 : Form
                 return;
             }
 
-            if (!TryParseVersion(Application.ProductVersion, out var currentVersion))
-            {
-                currentVersion = new Version(0, 0);
-            }
-
-            if (latestVersion <= currentVersion)
+            if (latestVersion <= CurrentAppVersion)
             {
                 return;
             }
