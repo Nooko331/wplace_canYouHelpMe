@@ -503,7 +503,7 @@ public partial class Form1 : Form
             }
             catch (Exception ex)
             {
-                Logger.Debug($"[scan] failed: {ex}");
+                Logger.Error($"[scan] failed: {ex}");
             }
             finally
             {
@@ -906,17 +906,16 @@ public partial class Form1 : Form
             }
         };
         var sent = NativeMethods.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+        if (sent == 0)
+        {
+            var err = Marshal.GetLastWin32Error();
+            Logger.Error($"[action] SendInput failed err={err}");
+            return;
+        }
+
         if (_options.Debug)
         {
-            if (sent == 0)
-            {
-                var err = Marshal.GetLastWin32Error();
-                Logger.Debug($"[action] SendInput failed err={err}");
-            }
-            else
-            {
-                Logger.Debug($"[action] SendInput ok sent={sent}");
-            }
+            Logger.Debug($"[action] SendInput ok sent={sent}");
         }
     }
 
@@ -1157,7 +1156,7 @@ public partial class Form1 : Form
             }
             catch (Exception ex)
             {
-                Logger.Debug($"[auto_all] error: {ex}");
+                Logger.Error($"[auto_all] error: {ex}");
             }
             finally
             {
@@ -1626,7 +1625,7 @@ public partial class Form1 : Form
         }
         catch (Exception ex)
         {
-            Logger.Debug($"[update] check failed: {ex.Message}");
+            Logger.Error($"[update] check failed: {ex.Message}");
         }
     }
 

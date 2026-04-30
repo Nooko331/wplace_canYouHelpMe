@@ -20,17 +20,17 @@ static class Program
     {
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
-            Logger.Debug($"[fatal] unhandled exception: {e.ExceptionObject}");
+            Logger.Error($"[fatal] unhandled exception: {e.ExceptionObject}");
             Logger.Shutdown();
         };
         Application.ThreadException += (_, e) =>
         {
-            Logger.Debug($"[fatal] ui exception: {e.Exception}");
+            Logger.Error($"[fatal] ui exception: {e.Exception}");
             Logger.Shutdown();
         };
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {
-            Logger.Debug($"[fatal] task exception: {e.Exception}");
+            Logger.Error($"[fatal] task exception: {e.Exception}");
             Logger.Shutdown();
         };
 
