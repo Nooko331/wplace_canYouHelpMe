@@ -415,6 +415,11 @@ public partial class Form1 : Form
         return $"{bgr.R},{bgr.G},{bgr.B}";
     }
 
+    private static bool IsWhite(BgrColor bgr)
+    {
+        return bgr.R == Color.White.R && bgr.G == Color.White.G && bgr.B == Color.White.B;
+    }
+
     private static string FormatBgrs(List<BgrColor> bgrs)
     {
         if (bgrs.Count == 0)
@@ -515,6 +520,7 @@ public partial class Form1 : Form
     private List<Point> ScanMatchingPoints(Rectangle rect, List<BgrColor> bgrs, CancellationToken token)
     {
         var points = new List<Point>();
+        var whitePoints = new List<Point>();
         int minDiff = int.MaxValue;
         int maxDiff = 0;
         long sumDiff = 0;
@@ -637,12 +643,14 @@ public partial class Form1 : Form
                     }
                     var bgr = ReadBufferPixel(x, y);
                     int localMin = int.MaxValue;
+                    BgrColor? matchedTarget = null;
                     foreach (var rbgr in bgrs)
                     {
                         int diff = bgr.MaxDiff(rbgr);
                         if (diff < localMin)
                         {
                             localMin = diff;
+                            matchedTarget = rbgr;
                         }
                     }
                     minDiff = Math.Min(minDiff, localMin);
@@ -651,17 +659,28 @@ public partial class Form1 : Form
                     count++;
                     if (localMin <= _options.ColorTol)
                     {
-                        points.Add(new Point(rect.Left + x, rect.Top + y));
+                        var point = new Point(rect.Left + x, rect.Top + y);
+                        if (matchedTarget.HasValue && IsWhite(matchedTarget.Value))
+                        {
+                            whitePoints.Add(point);
+                        }
+                        else
+                        {
+                            points.Add(point);
+                        }
                     }
                     done++;
                     MaybeUpdateProgress(done);
                 }
             }
             _state.SetScanProgress(total, done);
+            whitePoints.AddRange(points);
+            points = whitePoints;
         }
         else
         {
             var pointsBag = new ConcurrentBag<Point>();
+            var whitePointsBag = new ConcurrentBag<Point>();
             var statsLock = new object();
             try
             {
@@ -690,12 +709,14 @@ public partial class Form1 : Form
                             }
                             var bgr = ReadBufferPixel(x, y);
                             int localMin = int.MaxValue;
+                            BgrColor? matchedTarget = null;
                             foreach (var rbgr in bgrs)
                             {
                                 int diff = bgr.MaxDiff(rbgr);
                                 if (diff < localMin)
                                 {
                                     localMin = diff;
+                                    matchedTarget = rbgr;
                                 }
                             }
                             local.Min = Math.Min(local.Min, localMin);
@@ -704,7 +725,15 @@ public partial class Form1 : Form
                             local.Count++;
                             if (localMin <= _options.ColorTol)
                             {
-                                pointsBag.Add(new Point(rect.Left + x, rect.Top + y));
+                                var point = new Point(rect.Left + x, rect.Top + y);
+                                if (matchedTarget.HasValue && IsWhite(matchedTarget.Value))
+                                {
+                                    whitePointsBag.Add(point);
+                                }
+                                else
+                                {
+                                    pointsBag.Add(point);
+                                }
                             }
                         }
                         var newDone = Interlocked.Add(ref done, countX);
@@ -730,7 +759,8 @@ public partial class Form1 : Form
                 Logger.Debug("[scan] canceled");
             }
             _state.SetScanProgress(total, done);
-            points = new List<Point>(pointsBag);
+            points = new List<Point>(whitePointsBag);
+            points.AddRange(pointsBag);
         }
 
         if (_options.Debug)
@@ -1264,13 +1294,21 @@ public partial class Form1 : Form
                 byte r = buffer[offset + 2];
                 var pixelColor = new BgrColor(b, g, r);
 
+                int localMin = int.MaxValue;
+                BgrColor? bestTarget = null;
                 foreach (var target in targets)
                 {
-                    if (pixelColor.MaxDiff(target) <= _options.ColorTol)
+                    int diff = pixelColor.MaxDiff(target);
+                    if (diff < localMin)
                     {
-                        groups[target].Add(new Point(rect.Left + x, rect.Top + y));
-                        break; 
+                        localMin = diff;
+                        bestTarget = target;
                     }
+                }
+
+                if (bestTarget.HasValue && localMin <= _options.ColorTol)
+                {
+                    groups[bestTarget.Value].Add(new Point(rect.Left + x, rect.Top + y));
                 }
             }
             var newDone = Interlocked.Add(ref done, countX);
@@ -1302,11 +1340,15 @@ public partial class Form1 : Form
         _autoFillAllStartTime = DateTime.Now;
         int total = groups.Values.Sum(l => l.Count);
         int processed = 0;
+        var orderedColors = order
+            .Where(IsWhite)
+            .Concat(order.Where(color => !IsWhite(color)))
+            .ToList();
 
         // Ensure we yield focus away from our form initially
         Thread.Sleep(500); 
 
-        foreach (var color in order)
+        foreach (var color in orderedColors)
         {
             if (token.IsCancellationRequested) return;
             if (!groups.ContainsKey(color)) continue;
