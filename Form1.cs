@@ -46,6 +46,8 @@ public partial class Form1 : Form
     private readonly string _currentVersionText;
     private readonly Panel _compactDivider1 = new();
     private readonly Panel _compactDivider2 = new();
+    private System.Windows.Forms.Timer? _startupActivationTimer;
+    private int _startupActivationAttempts;
 
     public Form1(Options options, uint showMainWindowMessage)
     {
@@ -54,6 +56,9 @@ public partial class Form1 : Form
         InitializeComponent();
         _currentAppVersion = GetCurrentAppVersion();
         _currentVersionText = GetCurrentVersionText(_currentAppVersion);
+        FormBorderStyle = FormBorderStyle.FixedSingle;
+        ShowInTaskbar = true;
+        StartPosition = FormStartPosition.CenterScreen;
         MaximizeBox = false;
         KeyPreview = true;
         TrySetEnglishInputLanguage();
@@ -89,19 +94,12 @@ public partial class Form1 : Form
         ApplyLayout(_layoutMode);
 
         SetHook();
-        Shown += (_, _) => BeginInvoke((Action)EnsureVisibleAndActivated);
-        Shown += async (_, _) => await CheckLatestReleaseAsync();
-    }
-
-    protected override CreateParams CreateParams
-    {
-        get
+        Shown += (_, _) =>
         {
-            const int WS_EX_TOOLWINDOW = 0x00000080;
-            var cp = base.CreateParams;
-            cp.ExStyle |= WS_EX_TOOLWINDOW;
-            return cp;
-        }
+            BeginInvoke((Action)EnsureVisibleAndActivated);
+            BeginStartupActivationRetries();
+        };
+        Shown += async (_, _) => await CheckLatestReleaseAsync();
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
@@ -172,12 +170,45 @@ public partial class Form1 : Form
             WindowState = FormWindowState.Normal;
         }
 
+        NativeMethods.ShowWindow(Handle, NativeMethods.SW_SHOW);
         NativeMethods.ShowWindow(Handle, NativeMethods.SW_RESTORE);
         Show();
+        NativeMethods.SetWindowPos(
+            Handle,
+            NativeMethods.HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_SHOWWINDOW);
+        TopMost = false;
         TopMost = true;
         BringToFront();
         Activate();
         NativeMethods.SetForegroundWindow(Handle);
+    }
+
+    private void BeginStartupActivationRetries()
+    {
+        _startupActivationTimer?.Stop();
+        _startupActivationTimer?.Dispose();
+        _startupActivationAttempts = 0;
+        _startupActivationTimer = new System.Windows.Forms.Timer
+        {
+            Interval = 250
+        };
+        _startupActivationTimer.Tick += (_, _) =>
+        {
+            _startupActivationAttempts++;
+            EnsureVisibleAndActivated();
+            if (_startupActivationAttempts >= 12)
+            {
+                _startupActivationTimer?.Stop();
+                _startupActivationTimer?.Dispose();
+                _startupActivationTimer = null;
+            }
+        };
+        _startupActivationTimer.Start();
     }
 
     private void UpdateTimerOnTick(object? sender, EventArgs e)
@@ -964,10 +995,17 @@ public partial class Form1 : Form
         _hookProc = HookCallback;
         using var curProcess = System.Diagnostics.Process.GetCurrentProcess();
         using var curModule = curProcess.MainModule;
+        var moduleName = curModule?.ModuleName;
+        if (string.IsNullOrWhiteSpace(moduleName))
+        {
+            Logger.Error("[hook] failed to install keyboard hook: current module name is unavailable");
+            return;
+        }
+
         _hookId = NativeMethods.SetWindowsHookEx(
             NativeMethods.WH_KEYBOARD_LL,
             _hookProc,
-            NativeMethods.GetModuleHandle(curModule!.ModuleName),
+            NativeMethods.GetModuleHandle(moduleName),
             0);
     }
 
@@ -982,6 +1020,9 @@ public partial class Form1 : Form
 
     private void CleanupResources()
     {
+        _startupActivationTimer?.Stop();
+        _startupActivationTimer?.Dispose();
+        _startupActivationTimer = null;
         CancelScan();
         CancelAutoAll();
         Unhook();

@@ -83,7 +83,11 @@ static class Program
         uint showMainWindowMessage = NativeMethods.RegisterWindowMessage(ShowMainWindowMessageName);
         if (showMainWindowMessage != 0)
         {
-            NativeMethods.PostMessage(NativeMethods.HWND_BROADCAST, showMainWindowMessage, IntPtr.Zero, IntPtr.Zero);
+            for (int i = 0; i < 20; i++)
+            {
+                NativeMethods.PostMessage(NativeMethods.HWND_BROADCAST, showMainWindowMessage, IntPtr.Zero, IntPtr.Zero);
+                Thread.Sleep(150);
+            }
         }
     }
 
