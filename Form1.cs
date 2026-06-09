@@ -1059,7 +1059,7 @@ public partial class Form1 : Form
         return NativeMethods.CallNextHookEx(_hookId, nCode, wParam, lParam);
     }
 
-    private void PerformColorRecordAndAction()
+    private (BgrColor hover, BgrColor clear) PerformColorRecordAndAction()
     {
         var pos = Cursor.Position;
         BgrColor hover;
@@ -1089,6 +1089,7 @@ public partial class Form1 : Form
         Thread.Sleep(50);
         Logger.Debug("[action] click left");
         ClickCurrentPosition();
+        return (hover, clear);
     }
 
     private void FocusTargetUnderCursor()
@@ -1384,6 +1385,7 @@ public partial class Form1 : Form
             .Where(IsWhite)
             .Concat(order.Where(color => !IsWhite(color)))
             .ToList();
+        bool whiteColorCompleted = false;
 
         // Ensure we yield focus away from our form initially
         Thread.Sleep(500); 
@@ -1395,24 +1397,54 @@ public partial class Form1 : Form
 
             var points = groups[color];
             if (points.Count == 0) continue;
+            bool currentColorIsWhite = IsWhite(color);
 
-            var first = points[0];
-            Cursor.Position = first;
-            Thread.Sleep(_options.ActionDelayMs);
-            
-            // Focus on the window under cursor FIRST and wait longer
-            ClickRightCurrentPosition();
-            Thread.Sleep(200); // Increased delay to ensure focus is applied
-            
-            PerformColorRecordAndAction();
-            if (token.IsCancellationRequested) return;
-            Thread.Sleep(50);
-            SendSpace();
-            processed++;
-            UpdateAutoAllProgress(processed, total);
+            int startIndex = 0;
+            bool firstPointHandled = false;
+            while (startIndex < points.Count)
+            {
+                if (token.IsCancellationRequested) return;
+
+                var first = points[startIndex];
+                Cursor.Position = first;
+                Thread.Sleep(_options.ActionDelayMs);
+                
+                // Focus on the window under cursor FIRST and wait longer
+                ClickRightCurrentPosition();
+                Thread.Sleep(200); // Increased delay to ensure focus is applied
+                
+                var recorded = PerformColorRecordAndAction();
+                if (token.IsCancellationRequested) return;
+
+                if (whiteColorCompleted && !currentColorIsWhite && IsWhite(recorded.clear))
+                {
+                    Logger.Debug($"[auto_all] skip white sample while switching color target={FormatBgr(color)} pt=({first.X},{first.Y}) clear={FormatBgr(recorded.clear)}");
+                    processed++;
+                    UpdateAutoAllProgress(processed, total);
+                    startIndex++;
+                    continue;
+                }
+
+                Thread.Sleep(50);
+                SendSpace();
+                processed++;
+                UpdateAutoAllProgress(processed, total);
+                startIndex++;
+                firstPointHandled = true;
+                break;
+            }
+
+            if (!firstPointHandled)
+            {
+                if (currentColorIsWhite)
+                {
+                    whiteColorCompleted = true;
+                }
+                continue;
+            }
 
             // Handle subsequent points for this color
-            for (int i = 1; i < points.Count; i++)
+            for (int i = startIndex; i < points.Count; i++)
             {
                 if (token.IsCancellationRequested) return;
                 Cursor.Position = points[i];
@@ -1420,6 +1452,11 @@ public partial class Form1 : Form
                 SendSpace();
                 processed++;
                 UpdateAutoAllProgress(processed, total);
+            }
+
+            if (currentColorIsWhite)
+            {
+                whiteColorCompleted = true;
             }
         }
     }
