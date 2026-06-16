@@ -26,6 +26,8 @@ public sealed class RuntimeState
     public int ScanDone { get; private set; }
     public DateTime ScanStartTime { get; private set; }
     public DateTime AutoFillStartTime { get; private set; }
+    public List<Point> PreviewPoints { get; private set; } = new();
+    public bool PreviewReady { get; private set; }
 
     public void UpdateCurrent(BgrColor bgr, Point pos)
     {
@@ -73,6 +75,7 @@ public sealed class RuntimeState
             AutoFillReady = false;
             AutoFillPoints = new List<Point>();
             AutoFillIndex = 0;
+            // 预览范围与采样点保持就绪，仅在 ESC 停止动作，不清除显示状态
         }
     }
 
@@ -111,12 +114,29 @@ public sealed class RuntimeState
         }
     }
 
+    public void SetPreviewPoints(List<Point> points)
+    {
+        lock (_lock)
+        {
+            PreviewPoints = points;
+            PreviewReady = points.Count > 0;
+        }
+    }
+
     public void SetScanProgress(int total, int done)
     {
         lock (_lock)
         {
             ScanTotal = total;
             ScanDone = done;
+        }
+    }
+
+    public List<Point> GetAutoFillPoints()
+    {
+        lock (_lock)
+        {
+            return new List<Point>(AutoFillPoints);
         }
     }
 
@@ -163,7 +183,8 @@ public sealed class RuntimeState
         List<BgrColor> recordedBgrsRaw, Point? recordedPos, Rectangle? recordedRange,
         bool actionEnabled, bool autoFillEnabled, bool autoFillPrimed, bool autoFillReady,
         int autoFillIndex, int autoFillPointsCount, long lastActionTicks, int scanTotal, int scanDone,
-        DateTime scanStartTime, DateTime autoFillStartTime) Snapshot()
+        DateTime scanStartTime, DateTime autoFillStartTime,
+        List<Point> previewPoints, bool previewReady) Snapshot()
     {
         lock (_lock)
         {
@@ -184,7 +205,9 @@ public sealed class RuntimeState
                 ScanTotal,
                 ScanDone,
                 ScanStartTime,
-                AutoFillStartTime
+                AutoFillStartTime,
+                new List<Point>(PreviewPoints),
+                PreviewReady
             );
         }
     }

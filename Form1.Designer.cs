@@ -16,6 +16,7 @@ partial class Form1
     private System.Windows.Forms.Panel panelRight;
     private System.Windows.Forms.Label labelRec;
     private System.Windows.Forms.Label RangeRecord;
+    private System.Windows.Forms.CheckBox checkShowRange;
     private System.Windows.Forms.Button btnRange;
     private System.Windows.Forms.Button btnFill;
     private System.Windows.Forms.Label labelScan;
@@ -62,6 +63,7 @@ partial class Form1
             this.labelRec = new System.Windows.Forms.Label();
             this.panelRight = new System.Windows.Forms.Panel();
             this.RangeRecord = new System.Windows.Forms.Label();
+            this.checkShowRange = new System.Windows.Forms.CheckBox();
             this.btnRange = new System.Windows.Forms.Button();
             this.btnFill = new System.Windows.Forms.Button();
             this.labelScan = new System.Windows.Forms.Label();
@@ -135,8 +137,18 @@ partial class Form1
             this.RangeRecord.TabIndex = 11;
             this.RangeRecord.Text = "范围未记录";
             // 
+            // checkShowRange
+            //
+            this.checkShowRange.AutoSize = true;
+            this.checkShowRange.Location = new System.Drawing.Point(12, 335);
+            this.checkShowRange.Name = "checkShowRange";
+            this.checkShowRange.Size = new System.Drawing.Size(120, 24);
+            this.checkShowRange.TabIndex = 28;
+            this.checkShowRange.Text = "显示框选范围";
+            this.checkShowRange.UseVisualStyleBackColor = true;
+            //
             // btnRange
-            // 
+            //
             this.btnRange.Location = new System.Drawing.Point(12, 273);
             this.btnRange.Name = "btnRange";
             this.btnRange.Size = new System.Drawing.Size(122, 26);
@@ -450,6 +462,7 @@ partial class Form1
             this.Controls.Add(this.labelScan);
             this.Controls.Add(this.btnFill);
             this.Controls.Add(this.btnRange);
+            this.Controls.Add(this.checkShowRange);
             this.Controls.Add(this.RangeRecord);
             this.Controls.Add(this.panelRight);
             this.Controls.Add(this.panelLeft);

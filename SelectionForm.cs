@@ -161,14 +161,9 @@ namespace WplaceColorWatch
             }
             using var brush = new SolidBrush(SelectionAccentColor);
             const int dotSize = 5;
-            for (int y = rect.Top; y <= rect.Bottom; y += _scanStep)
+            foreach (var pt in ScanPattern.GetGridPoints(rect, _scanStep))
             {
-                int row = (y - rect.Top) / _scanStep;
-                int startOffset = (row % 2 == 1) ? (_scanStep / 2) : 0;
-                for (int x = rect.Left + startOffset; x <= rect.Right; x += _scanStep)
-                {
-                    graphics.FillEllipse(brush, x - 1, y - 1, dotSize, dotSize);
-                }
+                graphics.FillEllipse(brush, pt.X - 1, pt.Y - 1, dotSize, dotSize);
             }
         }
     }

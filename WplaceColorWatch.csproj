@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <AppVersion>1.0.7</AppVersion>
+    <AppVersion>1.0.8</AppVersion>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
@@ -13,7 +13,7 @@
     <Version>$(AppVersion)</Version>
     <FileVersion>$(AppVersion).0</FileVersion>
     <AssemblyVersion>$(AppVersion).0</AssemblyVersion>
-    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
 </Project>
