@@ -45,6 +45,7 @@ public sealed class RuntimeState
             RecordedBgrsRaw = raw;
             RecordedBgrs = match;
             RecordedPos = pos;
+            Logger.Debug($"[state] RecordColors raw={raw.Count} match={match.Count} pos=({pos.X},{pos.Y})");
         }
     }
 
@@ -53,6 +54,7 @@ public sealed class RuntimeState
         lock (_lock)
         {
             RecordedRange = rect;
+            Logger.Debug($"[state] SetRange rect=({rect.X},{rect.Y},{rect.Width},{rect.Height})");
         }
     }
 
@@ -61,6 +63,7 @@ public sealed class RuntimeState
         lock (_lock)
         {
             ActionEnabled = !ActionEnabled;
+            Logger.Debug($"[state] ToggleAction enabled={ActionEnabled}");
             return ActionEnabled;
         }
     }
@@ -69,6 +72,7 @@ public sealed class RuntimeState
     {
         lock (_lock)
         {
+            Logger.Debug($"[state] StopAll prev: action={ActionEnabled} autoFill={AutoFillEnabled} primed={AutoFillPrimed} ready={AutoFillReady} fillPoints={AutoFillPoints.Count} fillIdx={AutoFillIndex}");
             ActionEnabled = false;
             AutoFillEnabled = false;
             AutoFillPrimed = false;
@@ -90,6 +94,7 @@ public sealed class RuntimeState
             ScanTotal = 0;
             ScanDone = 0;
             AutoFillStartTime = DateTime.Now;
+            Logger.Debug($"[state] StartAutoFill enabled={AutoFillEnabled} ready={AutoFillReady}");
         }
     }
 
@@ -100,6 +105,7 @@ public sealed class RuntimeState
             ScanTotal = total;
             ScanDone = 0;
             ScanStartTime = DateTime.Now;
+            Logger.Debug($"[state] StartScan total={total}");
         }
     }
 
@@ -111,6 +117,7 @@ public sealed class RuntimeState
             AutoFillIndex = 0;
             AutoFillPrimed = false;
             AutoFillReady = true;
+            Logger.Debug($"[state] SetAutoFillPoints count={points.Count} ready={AutoFillReady}");
         }
     }
 
@@ -120,6 +127,7 @@ public sealed class RuntimeState
         {
             PreviewPoints = points;
             PreviewReady = points.Count > 0;
+            Logger.Debug($"[state] SetPreviewPoints count={points.Count} ready={PreviewReady}");
         }
     }
 
@@ -132,6 +140,14 @@ public sealed class RuntimeState
         }
     }
 
+    public void SetAutoFillIndex(int index)
+    {
+        lock (_lock)
+        {
+            AutoFillIndex = Math.Max(0, Math.Min(index, AutoFillPoints.Count));
+        }
+    }
+
     public List<Point> GetAutoFillPoints()
     {
         lock (_lock)
@@ -140,21 +156,26 @@ public sealed class RuntimeState
         }
     }
 
-    public Point? NextAutoFillPoint()
+    public bool IsAutoFillActive()
+    {
+        lock (_lock)
+        {
+            return AutoFillEnabled && AutoFillReady && AutoFillIndex < AutoFillPoints.Count;
+        }
+    }
+
+    public Point? TryTakeNextAutoFillPoint()
     {
         lock (_lock)
         {
             if (!AutoFillEnabled || AutoFillPoints.Count == 0)
             {
-                if (AutoFillReady)
-                {
-                    AutoFillEnabled = false;
-                }
                 return null;
             }
             if (AutoFillIndex >= AutoFillPoints.Count)
             {
                 AutoFillEnabled = false;
+                Logger.Debug($"[state] TryTakeNextAutoFillPoint completed (all {AutoFillPoints.Count} points done)");
                 return null;
             }
             var pt = AutoFillPoints[AutoFillIndex];
@@ -168,6 +189,7 @@ public sealed class RuntimeState
         lock (_lock)
         {
             AutoFillPrimed = true;
+            Logger.Debug($"[state] SetAutoFillPrimed");
         }
     }
 
@@ -213,4 +235,3 @@ public sealed class RuntimeState
     }
 }
 }
-

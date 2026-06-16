@@ -1,10 +1,12 @@
+可用性测试：截止到 2026-06-16 18:00:00，该程序可用✅
+
 # 这是什么？
 
 这是一个辅助 wplace 涂色的 Windows 工具，用于配合 BlueMarble 渲染出来的像素方块进行取色、检测和自动填涂。
 
-![主界面](readme/image-20260415161414146.png)
+![image-20260617014823455](README/image-20260617014823455.png)
 
-![横向界面](readme/image-20260415161422198.png)
+![image-20260617014835843](README/image-20260617014835843.png)
 
 注意：该工具依赖 BlueMarble 渲染出来的像素方块。
 
@@ -19,8 +21,9 @@
    点击 **划取检测范围** 框选一个区域。程序会记录该区域，作为后续自动填涂/全自动填涂的范围。
 
 3. 显示框选范围（可选）
-   勾选“显示框选范围”后，程序会在屏幕上持续显示框选矩形，以及按当前扫描步长计算出来的待处理像素点网格。方便确认范围是否覆盖到了 BlueMarble 方块。
+   勾选"显示框选范围"后，程序会在屏幕上持续显示框选矩形，以及按当前扫描步长计算出来的待处理像素点网格。方便确认范围是否覆盖到了 BlueMarble 方块。
 
+   - **步长实时预览**：选取范围并开启显示后，可以随时调整扫描步长，覆盖层上的像素点网格会**实时更新**。建议利用这一功能观察不同步长下待处理像素点的分布效果，确保点落在 BlueMarble 渲染的小方块上，避免步长过大漏掉目标、步长过小浪费算力。
    - 颜色检测 / A 键取色时会暂时隐藏覆盖层，检测完成后自动恢复显示。
    - 自动填涂 / 全自动填涂过程中，已经处理过的像素点会从覆盖层中消失，仅显示尚未处理的点。
    - 这只是可视化辅助，不开启也能正常使用自动和全自动功能。
@@ -68,21 +71,98 @@ CPU 线程数只影响像素颜色判断速度，不影响实际填涂速度。
 
 这个逻辑用于减少白色优先填涂后，后续颜色因为首个候选点偏差而错误继续吸取白色的问题。
 
-# 打包
+# 构建与打包
 
-当前版本：`1.0.8`
+当前版本：`1.1.0`
 
-推荐发布命令：
+项目基于 .NET 8，所有命令在项目根目录下执行。
+
+## 测试版本（Debug）
+
+用于本地开发调试，包含调试符号，未优化。
 
 ```powershell
-dotnet publish .\WplaceColorWatch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o .\publish\win-x64-single-exe
+dotnet build -c Debug
 ```
 
-发布后可执行文件位于：
+输出路径：
 
 ```text
-publish/win-x64-single-exe/wplace_canYouHelpMe.exe
+bin/Debug/net8.0-windows/wplace_canYouHelpMe.exe
 ```
+
+## 测试版本（Release）
+
+本地测试用，开启优化，不含调试符号，依赖系统安装的 .NET 运行时。
+
+```powershell
+dotnet build -c Release
+```
+
+输出路径：
+
+```text
+bin/Release/net8.0-windows/wplace_canYouHelpMe.exe
+```
+
+## 打包发布版本（自包含单文件）
+
+自包含（self-contained），无需系统安装 .NET 运行时，单个可执行文件，可直接分发给用户。
+
+### 打包命令
+
+```powershell
+dotnet publish .\WplaceColorWatch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:DebugSymbols=false -o .\publish\win-x64-single-exe
+```
+
+### 产物重命名（版本号后缀）
+
+打包完成后，需要将输出的 exe 文件重命名，添加版本号后缀。版本号从 `.csproj` 的 `<AppVersion>` 读取。
+
+**命名规范**：
+
+```
+{原始文件名}_v{版本号}.exe
+```
+
+示例：
+
+```
+wplace_canYouHelpMe.exe → wplace_canYouHelpMe_v1.1.0.exe
+```
+
+**版本号格式标准**：
+
+- 格式：`_v{主版本}.{次版本}.{修订号}`
+- 版本号来源：`WplaceColorWatch.csproj` 中的 `<AppVersion>` 节点
+- 示例：`_v1.1.0`、`_v2.0.0`、`_v1.2.3`
+
+**重命名命令**：
+
+```powershell
+# 读取版本号并重命名（在项目根目录下执行）
+$version = (Select-Xml -Path .\WplaceColorWatch.csproj -XPath "//AppVersion").Node.InnerText
+Rename-Item -Path .\publish\win-x64-single-exe\wplace_canYouHelpMe.exe -NewName "wplace_canYouHelpMe_v$version.exe"
+```
+
+**最终产物路径**：
+
+```text
+publish/win-x64-single-exe/wplace_canYouHelpMe_v{版本号}.exe
+```
+
+### 打包参数说明
+
+| 参数 | 含义 |
+|---|---|
+| `-c Release` | 使用 Release 配置 |
+| `-r win-x64` | 目标运行时为 Windows x64 |
+| `--self-contained true` | 自包含模式，打包 .NET 运行时 |
+| `-p:PublishSingleFile=true` | 输出为单个 exe 文件 |
+| `-p:EnableCompressionInSingleFile=true` | 对单文件进行压缩 |
+| `-p:DebugType=none` | 不生成 PDB 调试符号文件 |
+| `-p:DebugSymbols=false` | 不嵌入调试符号 |
+| `-o .\publish\win-x64-single-exe` | 输出到指定目录 |
 
 # 许可证
 

@@ -274,8 +274,8 @@ public partial class Form1 : Form
 
         if (snapshot.autoFillEnabled && snapshot.autoFillReady && snapshot.recordedRange.HasValue && snapshot.recordedBgrs.Count > 0)
         {
-            TryFireAutoFill();
-            snapshot = _state.Snapshot();
+            // 自动填充现在在扫描完成后由后台 Task 直接批量执行
+            // 这里仅保持对全自动的兼容，半自动的 trigger 已内聚到 BeginFill
         }
 
         UpdateUi(snapshot, match);
@@ -296,39 +296,73 @@ public partial class Form1 : Form
         _state.SetLastActionTicks(nowTicks);
     }
 
-    private void TryFireAutoFill()
+    private void ExecuteAutoFillPoints(List<Point> points, bool isFullAuto, CancellationToken token)
     {
-        var nowTicks = Environment.TickCount64;
-        var snapshot = _state.Snapshot();
-        if (nowTicks - snapshot.lastActionTicks < _options.CooldownMs)
+        Logger.Debug($"[exec_fill] ExecuteAutoFillPoints start: points={points.Count} isFullAuto={isFullAuto}");
+        _autoFillAllStartTime = DateTime.Now;
+        int total = points.Count;
+        int processed = 0;
+
+        if (isFullAuto)
         {
-            return;
+            Thread.Sleep(500);
         }
-        var pt = _state.NextAutoFillPoint();
-        if (pt == null)
+
+        for (int i = 0; i < points.Count; i++)
         {
-            if (_options.Debug)
+            if (token.IsCancellationRequested)
             {
-                Logger.Debug("[auto_fill] no points to fire");
+                Logger.Debug($"[exec_fill] cancelled at i={i}/{points.Count}");
+                return;
             }
-            return;
+
+            var pt = points[i];
+            Cursor.Position = pt;
+            _state.SetAutoFillIndex(i + 1);
+
+            if (isFullAuto)
+            {
+                Logger.Debug($"[exec_fill] full-auto pt {i}/{total} pos=({pt.X},{pt.Y})");
+                ClickRightCurrentPosition();
+                Thread.Sleep(200);
+                var recorded = PerformColorRecordAndAction();
+                if (token.IsCancellationRequested) return;
+                BeginInvoke((Action)(() => SetOverlayFillStartIndex(processed)));
+
+                // 全自动的白色跳过逻辑由调用方在分组前处理，这里只执行单点
+                Thread.Sleep(50);
+                SendSpace();
+            }
+            else
+            {
+                if (i == 0)
+                {
+                    Logger.Debug($"[exec_fill] semi-auto first click at pt=({pt.X},{pt.Y})");
+                    ClickCurrentPosition();
+                }
+                if (_options.Debug)
+                {
+                    Logger.Debug($"[auto_fill] fire pt=({pt.X},{pt.Y})");
+                }
+                FocusTargetUnderCursor();
+                Logger.Debug("[action] send space (auto_fill)");
+                SendSpace();
+                // 覆盖层本身点击穿透，直接更新已处理索引即可
+                BeginInvoke((Action)(() => SetOverlayFillStartIndex(i + 1)));
+            }
+
+            processed++;
+            if (isFullAuto)
+            {
+                UpdateAutoAllProgress(processed, total);
+            }
+
+            if (processed % 10 == 0 || processed == total)
+            {
+                Logger.Debug($"[exec_fill] progress: {processed}/{total}");
+            }
         }
-        HidePreviewOverlay();
-        Cursor.Position = pt.Value;
-        if (!snapshot.autoFillPrimed)
-        {
-            ClickCurrentPosition();
-            _state.SetAutoFillPrimed();
-        }
-        if (_options.Debug)
-        {
-            Logger.Debug($"[auto_fill] fire pt=({pt.Value.X},{pt.Value.Y})");
-        }
-        FocusTargetUnderCursor();
-        Logger.Debug("[action] send space (auto_fill)");
-        SendSpace();
-        _state.SetLastActionTicks(nowTicks);
-        UpdateOverlayFromState(_state.Snapshot());
+        Logger.Debug($"[exec_fill] ExecuteAutoFillPoints done: processed={processed}/{total}");
     }
 
     private DateTime _autoFillAllStartTime;
@@ -498,16 +532,31 @@ public partial class Form1 : Form
 
     private void BeginRangeSelect()
     {
+        Logger.Debug("[ui] BeginRangeSelect clicked");
         _options.ScanStep = ReadScanStep();
         if (ScanStep.Text != _options.ScanStep.ToString())
         {
             ScanStep.Text = _options.ScanStep.ToString();
         }
         var wasChecked = checkShowRange.Checked;
-        HidePreviewOverlay();
+        Logger.Debug($"[range] overlay_was_checked={wasChecked} previewOverlay_exists={_previewOverlay != null && !_previewOverlay.IsDisposed}");
+        // 彻底清除覆盖层，防止旧的框选范围和像素点被 SelectionForm 截图捕获
+        if (_previewOverlay != null)
+        {
+            Logger.Debug("[range] disposing old overlay");
+            _previewOverlay.Hide();
+            _previewOverlay.Dispose();
+            _previewOverlay = null;
+        }
+        _overlayFillMode = false;
+        // 取消勾选以防止 Timer tick 中 UpdateOverlayFromState 在 SelectionForm 期间重建覆盖层
+        checkShowRange.Checked = false;
+        Logger.Debug("[range] overlay disposed, checkbox unchecked, opening SelectionForm");
+
         var screen = Screen.FromPoint(Cursor.Position);
         using var sel = new SelectionForm(screen.Bounds, _options.ScanStep);
         sel.ShowDialog(this);
+        Logger.Debug($"[range] SelectionForm closed selected={sel.SelectedRect.HasValue}");
         if (sel.SelectedRect.HasValue)
         {
             _state.SetRange(sel.SelectedRect.Value);
@@ -520,6 +569,7 @@ public partial class Form1 : Form
         }
         else if (wasChecked)
         {
+            Logger.Debug("[range] selection cancelled, restoring overlay");
             checkShowRange.Checked = true;
             RestorePreviewOverlayIfChecked();
         }
@@ -528,8 +578,10 @@ public partial class Form1 : Form
     private void RefreshRangePreview()
     {
         var snapshot = _state.Snapshot();
+        Logger.Debug($"[overlay] RefreshRangePreview hasRange={snapshot.recordedRange.HasValue} overlayFillMode={_overlayFillMode}");
         if (!snapshot.recordedRange.HasValue)
         {
+            Logger.Debug("[overlay] RefreshRangePreview: no range, hiding");
             _state.SetPreviewPoints(new List<Point>());
             _previewOverlay?.Hide();
             _overlayFillMode = false;
@@ -540,6 +592,7 @@ public partial class Form1 : Form
         _state.SetPreviewPoints(points);
         if (_previewOverlay == null || _previewOverlay.IsDisposed)
         {
+            Logger.Debug("[overlay] RefreshRangePreview: creating new overlay form");
             _previewOverlay = new PreviewOverlayForm();
         }
         _overlayFillMode = false;
@@ -549,17 +602,20 @@ public partial class Form1 : Form
         if (!_previewOverlay.Visible)
         {
             _previewOverlay.Show(this);
+            Logger.Debug($"[overlay] RefreshRangePreview: showing overlay with {points.Count} points");
         }
     }
 
     private void ToggleRangePreview(bool show)
     {
+        Logger.Debug($"[overlay] ToggleRangePreview show={show}");
         if (show)
         {
             RefreshRangePreview();
         }
         else
         {
+            Logger.Debug("[overlay] ToggleRangePreview: hiding overlay");
             _previewOverlay?.Hide();
             _overlayFillMode = false;
         }
@@ -567,11 +623,16 @@ public partial class Form1 : Form
 
     private void HidePreviewOverlay()
     {
+        if (_previewOverlay != null && _previewOverlay.Visible)
+        {
+            Logger.Debug($"[overlay] HidePreviewOverlay visible={_previewOverlay.Visible}");
+        }
         _previewOverlay?.Hide();
     }
 
     private void RestorePreviewOverlayIfChecked()
     {
+        Logger.Debug($"[overlay] RestorePreviewOverlayIfChecked checked={checkShowRange.Checked}");
         if (checkShowRange.Checked)
         {
             RefreshRangePreview();
@@ -587,6 +648,11 @@ public partial class Form1 : Form
     {
         if (!checkShowRange.Checked)
         {
+            // 未勾选显示，隐藏覆盖层
+            if (_previewOverlay != null && _previewOverlay.Visible)
+            {
+                Logger.Debug("[overlay] UpdateOverlayFromState: checkbox unchecked, hiding");
+            }
             _previewOverlay?.Hide();
             _overlayFillMode = false;
             return;
@@ -599,8 +665,13 @@ public partial class Form1 : Form
         }
 
         // 扫描期间隐藏覆盖层，避免把覆盖层内容扫进去
-        if (_scanCts != null)
+        // 但如果已经进入填充模式（_overlayFillMode），不要隐藏覆盖层，填充覆盖层由 SetOverlayFillPoints 管理
+        if (_scanCts != null && !_overlayFillMode)
         {
+            if (_previewOverlay != null && _previewOverlay.Visible)
+            {
+                Logger.Debug("[overlay] UpdateOverlayFromState: scanCts active, hiding");
+            }
             _previewOverlay?.Hide();
             return;
         }
@@ -608,6 +679,7 @@ public partial class Form1 : Form
         // 全自动开始但尚未建立进度点列表前也隐藏
         if (_autoAllCts != null && !_overlayFillIsFullAuto)
         {
+            Logger.Debug($"[overlay] UpdateOverlayFromState: autoAllCts active, fillIsFullAuto=false, hiding");
             _previewOverlay?.Hide();
             return;
         }
@@ -620,6 +692,7 @@ public partial class Form1 : Form
             var fillPoints = _state.GetAutoFillPoints();
             if (!_overlayFillMode || _overlayFillPoints.Count != fillPoints.Count || !ReferenceEquals(_overlayFillPoints, fillPoints))
             {
+                Logger.Debug($"[overlay] UpdateOverlayFromState: semi-auto fill mode overlayFillMode={_overlayFillMode} fillPts={fillPoints.Count} startIdx={snapshot.autoFillIndex}");
                 _overlayFillMode = true;
                 _overlayFillIsFullAuto = false;
                 _overlayFillPoints = fillPoints;
@@ -628,6 +701,7 @@ public partial class Form1 : Form
             }
             else if (_overlayFillStartIndex != snapshot.autoFillIndex)
             {
+                Logger.Debug($"[overlay] UpdateOverlayFromState: semi-auto fill update startIdx {_overlayFillStartIndex} -> {snapshot.autoFillIndex}");
                 _overlayFillStartIndex = snapshot.autoFillIndex;
                 _previewOverlay?.SetStartIndex(snapshot.autoFillIndex);
             }
@@ -639,6 +713,7 @@ public partial class Form1 : Form
         {
             if (_previewOverlay != null && _overlayFillMode && !_previewOverlay.Visible)
             {
+                Logger.Debug("[overlay] UpdateOverlayFromState: full-auto fill, re-showing overlay");
                 _previewOverlay.Show(this);
             }
             return;
@@ -649,34 +724,41 @@ public partial class Form1 : Form
         {
             if (_overlayFillMode)
             {
+                Logger.Debug("[overlay] UpdateOverlayFromState: switching from fill to preview mode");
                 _overlayFillMode = false;
                 _overlayFillStartIndex = 0;
                 EnsureOverlay().SetData(range, snapshot.previewPoints, 0);
             }
             else if (_previewOverlay == null || _previewOverlay.IsDisposed)
             {
+                Logger.Debug("[overlay] UpdateOverlayFromState: creating overlay for preview mode");
                 EnsureOverlay().SetData(range, snapshot.previewPoints, 0);
             }
             else if (!_previewOverlay.Visible)
             {
+                Logger.Debug("[overlay] UpdateOverlayFromState: showing preview overlay");
                 _previewOverlay.Show(this);
             }
             return;
         }
 
+        Logger.Debug("[overlay] UpdateOverlayFromState: no active mode, hiding");
         _previewOverlay?.Hide();
         _overlayFillMode = false;
     }
 
     private void SetOverlayFillPoints(List<Point> points, bool fullAuto)
     {
+        Logger.Debug($"[overlay] SetOverlayFillPoints count={points.Count} fullAuto={fullAuto} showRangeChecked={checkShowRange.Checked}");
         if (!checkShowRange.Checked)
         {
+            Logger.Debug("[overlay] SetOverlayFillPoints: checkbox not checked, skipping");
             return;
         }
         var snapshot = _state.Snapshot();
         if (!snapshot.recordedRange.HasValue)
         {
+            Logger.Debug("[overlay] SetOverlayFillPoints: no recorded range, skipping");
             return;
         }
         _overlayFillMode = true;
@@ -684,6 +766,7 @@ public partial class Form1 : Form
         _overlayFillPoints = new List<Point>(points);
         _overlayFillStartIndex = 0;
         EnsureOverlay().SetData(snapshot.recordedRange.Value, _overlayFillPoints, 0);
+        Logger.Debug($"[overlay] SetOverlayFillPoints: overlay setup complete");
     }
 
     private void SetOverlayFillStartIndex(int startIndex)
@@ -698,6 +781,7 @@ public partial class Form1 : Form
 
     private void ClearOverlayFill()
     {
+        Logger.Debug($"[overlay] ClearOverlayFill prevMode={_overlayFillMode} prevFullAuto={_overlayFillIsFullAuto}");
         _overlayFillMode = false;
         _overlayFillIsFullAuto = false;
         _overlayFillPoints = new List<Point>();
@@ -708,10 +792,12 @@ public partial class Form1 : Form
     {
         if (_previewOverlay == null || _previewOverlay.IsDisposed)
         {
+            Logger.Debug("[overlay] EnsureOverlay: creating new overlay form");
             _previewOverlay = new PreviewOverlayForm();
         }
         if (!_previewOverlay.Visible)
         {
+            Logger.Debug("[overlay] EnsureOverlay: showing overlay");
             _previewOverlay.Show(this);
         }
         _previewOverlay.BringToFront();
@@ -720,8 +806,10 @@ public partial class Form1 : Form
 
     private void BeginFill()
     {
+        Logger.Debug("[ui] BeginFill clicked");
         if (!btnFill.Enabled)
         {
+            Logger.Debug("[auto_fill] button disabled, skipping");
             return;
         }
         _options.ScanStep = ReadScanStep();
@@ -730,28 +818,50 @@ public partial class Form1 : Form
             ScanStep.Text = _options.ScanStep.ToString();
         }
         var snapshot = _state.Snapshot();
+        Logger.Debug($"[auto_fill] state: bgrs={snapshot.recordedBgrs.Count} range={snapshot.recordedRange.HasValue} autoFillEnabled={snapshot.autoFillEnabled}");
         if (snapshot.recordedBgrs.Count == 0)
         {
+            Logger.Debug("[auto_fill] no colors recorded, showing message box");
             MessageBox.Show("请通过 A 键选取颜色", "提示");
             return;
         }
         if (!snapshot.recordedRange.HasValue)
         {
+            Logger.Debug("[auto_fill] no range, showing message box");
             MessageBox.Show("请框选范围", "提示");
             return;
         }
-        var fillTargets = snapshot.recordedBgrs.Count > 1
-            ? new List<BgrColor> { snapshot.recordedBgrs[1] }
-            : new List<BgrColor> { snapshot.recordedBgrs[0] };
+        // 将用户取色标准化到预定义调色板，以避免屏幕取色与游戏实际颜色的微小差异
+        var rawTarget = snapshot.recordedBgrs.Count > 1
+            ? snapshot.recordedBgrs[1]
+            : snapshot.recordedBgrs[0];
+        var predefinedColors = GetPredefinedColors();
+        BgrColor fillTarget = rawTarget;
+        int minDiff = int.MaxValue;
+        foreach (var pc in predefinedColors)
+        {
+            int diff = rawTarget.MaxDiff(pc);
+            if (diff < minDiff)
+            {
+                minDiff = diff;
+                fillTarget = pc;
+            }
+        }
+        Logger.Debug($"[auto_fill] normalized color: raw=[{rawTarget.R},{rawTarget.G},{rawTarget.B}] -> predefined=[{fillTarget.R},{fillTarget.G},{fillTarget.B}] diff={minDiff}");
+        var fillTargets = new List<BgrColor> { fillTarget };
+        Logger.Debug($"[auto_fill] fillTargets={fillTargets.Count} targets=[{string.Join(",", fillTargets.Select(c => $"[{c.R},{c.G},{c.B}]"))}]");
         var workers = ReadScanWorkers();
         _options.ScanWorkers = workers;
         if (textCores.Text != workers.ToString())
         {
             textCores.Text = workers.ToString();
         }
+        Logger.Debug($"[auto_fill] workers={workers} step={_options.ScanStep}");
         _state.StartAutoFill();
         btnFill.Enabled = false;
         HidePreviewOverlay();
+        Logger.Debug("[auto_fill] starting scan task...");
+        Thread.Sleep(200);
         _scanCts?.Cancel();
         _scanCts = new CancellationTokenSource();
         var token = _scanCts.Token;
@@ -761,6 +871,7 @@ public partial class Form1 : Form
             try
             {
                 var points = ScanMatchingPoints(snapshot.recordedRange.Value, fillTargets, token);
+                Logger.Debug($"[auto_fill] scan returned points={points.Count} cancelled={token.IsCancellationRequested}");
                 if (token.IsCancellationRequested)
                 {
                     Logger.Debug("[scan] canceled before apply");
@@ -768,6 +879,24 @@ public partial class Form1 : Form
                 }
                 _state.SetAutoFillPoints(points);
                 Logger.Debug($"[auto_fill] enabled points={points.Count}");
+
+                if (points.Count > 0)
+                {
+                    // 初始化填充覆盖层，复用全自动的显示逻辑
+                    Logger.Debug($"[auto_fill] setting up fill overlay with {points.Count} points");
+                    BeginInvoke((Action)(() => SetOverlayFillPoints(new List<Point>(points), false)));
+                    Logger.Debug($"[auto_fill] executing {points.Count} fill points...");
+                    ExecuteAutoFillPoints(points, false, token);
+                    Logger.Debug($"[auto_fill] ExecuteAutoFillPoints completed");
+                }
+                else
+                {
+                    Logger.Debug("[auto_fill] no points found, fill skipped");
+                    BeginInvoke((Action)(() =>
+                    {
+                        MessageBox.Show("未找到匹配颜色的像素点，请检查颜色容差设置", "提示");
+                    }));
+                }
             }
             catch (Exception ex)
             {
@@ -775,12 +904,16 @@ public partial class Form1 : Form
             }
             finally
             {
+                Logger.Debug("[auto_fill] task finally: restoring UI");
                 BeginInvoke((Action)(() =>
                 {
                     btnFill.Enabled = true;
-                    UpdateOverlayFromState(_state.Snapshot());
+                    _state.StopAll();
+                    ClearOverlayFill();
+                    RestorePreviewOverlayIfChecked();
                     var cts = Interlocked.Exchange(ref _scanCts, null);
                     cts?.Dispose();
+                    Logger.Debug("[auto_fill] task cleanup done");
                 }));
             }
         }, token);
@@ -1115,6 +1248,7 @@ public partial class Form1 : Form
         var cts = Interlocked.Exchange(ref _scanCts, null);
         if (cts != null)
         {
+            Logger.Debug("[cancel] CancelScan: cancelling and disposing scanCts");
             cts.Cancel();
             cts.Dispose();
         }
@@ -1195,6 +1329,7 @@ public partial class Form1 : Form
     private void ClickCurrentPosition()
     {
         Thread.Sleep(_options.ActionDelayMs);
+        Logger.Debug("[action] click left (down+up)");
         mouse_event(0x02, 0, 0, 0, UIntPtr.Zero);
         mouse_event(0x04, 0, 0, 0, UIntPtr.Zero);
     }
@@ -1202,6 +1337,7 @@ public partial class Form1 : Form
     private void ClickRightCurrentPosition()
     {
         Thread.Sleep(_options.ActionDelayMs);
+        Logger.Debug("[action] click right (down+up)");
         mouse_event(0x08, 0, 0, 0, UIntPtr.Zero); // MOUSEEVENTF_RIGHTDOWN
         mouse_event(0x10, 0, 0, 0, UIntPtr.Zero); // MOUSEEVENTF_RIGHTUP
     }
@@ -1280,11 +1416,15 @@ public partial class Form1 : Form
             int vkCode = Marshal.ReadInt32(lParam);
             if (vkCode == NativeMethods.VK_ESCAPE)
             {
+                Logger.Debug($"[hook] ESC pressed, stopping all");
                 BeginInvoke((Action)(() =>
                 {
+                    Logger.Debug("[hook] ESC BeginInvoke: calling StopAll/CancelScan/CancelAutoAll");
                     _state.StopAll();
                     CancelScan();
                     CancelAutoAll();
+                    Logger.Debug("[hook] ESC: all stopped, restoring overlay if needed");
+                    RestorePreviewOverlayIfChecked();
                 }));
             }
             // 鐩墠S閿嚜鍔ㄦ粦鍔ㄦ娴嬬簿搴︽瀬鍏朵笉鍑嗙‘锛屾殏鏃跺叧闂?
@@ -1298,6 +1438,7 @@ public partial class Form1 : Form
             // }
             else if (vkCode == NativeMethods.VK_A)
             {
+                Logger.Debug($"[hook] A pressed, recording color");
                 BeginInvoke((Action)(() => PerformColorRecordAndAction()));
             }
         }
@@ -1306,6 +1447,7 @@ public partial class Form1 : Form
 
     private (BgrColor hover, BgrColor clear) PerformColorRecordAndAction()
     {
+        Logger.Debug("[record] PerformColorRecordAndAction start");
         // 取色前隐藏覆盖层，避免读到覆盖层的颜色
         HidePreviewOverlay();
         try
@@ -1317,9 +1459,11 @@ public partial class Form1 : Form
             {
                 hover = dc.GetPixel(pos.X, pos.Y);
             }
+            Logger.Debug($"[record] hover at ({pos.X},{pos.Y}) rgb=[{hover.R},{hover.G},{hover.B}]");
             var safe = PickSafePos(_state.Snapshot().recordedRange);
             if (safe.HasValue)
             {
+                Logger.Debug($"[record] moving cursor to safe pos ({safe.Value.X},{safe.Value.Y})");
                 NativeMethods.SetCursorPos(safe.Value.X, safe.Value.Y);
                 Thread.Sleep(30);
             }
@@ -1328,6 +1472,7 @@ public partial class Form1 : Form
                 clear = dc.GetPixel(pos.X, pos.Y);
             }
             NativeMethods.SetCursorPos(pos.X, pos.Y);
+            Logger.Debug($"[record] clear at ({pos.X},{pos.Y}) rgb=[{clear.R},{clear.G},{clear.B}]");
 
             _state.RecordColors(new List<BgrColor> { hover, clear }, new List<BgrColor> { hover, clear }, pos);
             Logger.Debug($"[record] raw_colors_rgb=[{string.Join(",", hover.ToRgbArray())}],[{string.Join(",", clear.ToRgbArray())}] pos=({pos.X},{pos.Y})");
@@ -1338,6 +1483,7 @@ public partial class Form1 : Form
             Thread.Sleep(50);
             Logger.Debug("[action] click left");
             ClickCurrentPosition();
+            Logger.Debug("[record] PerformColorRecordAndAction done");
             return (hover, clear);
         }
         finally
@@ -1374,6 +1520,7 @@ public partial class Form1 : Form
         var cts = Interlocked.Exchange(ref _autoAllCts, null);
         if (cts != null)
         {
+            Logger.Debug("[cancel] CancelAutoAll: cancelling and disposing autoAllCts");
             cts.Cancel();
             cts.Dispose();
         }
@@ -1381,7 +1528,12 @@ public partial class Form1 : Form
 
     private void BeginAutoFillAll()
     {
-        if (!btnAutoFillAll.Enabled) return;
+        Logger.Debug("[ui] BeginAutoFillAll clicked");
+        if (!btnAutoFillAll.Enabled)
+        {
+            Logger.Debug("[auto_all] button disabled, skipping");
+            return;
+        }
 
         _options.ScanStep = ReadScanStep();
         if (ScanStep.Text != _options.ScanStep.ToString())
@@ -1392,6 +1544,7 @@ public partial class Form1 : Form
         var snapshot = _state.Snapshot();
         if (!snapshot.recordedRange.HasValue)
         {
+            Logger.Debug("[auto_all] no range, showing message box");
             MessageBox.Show("请框选范围", "提示");
             return;
         }
@@ -1399,10 +1552,11 @@ public partial class Form1 : Form
         var htmlColors = GetPredefinedColors();
         if (htmlColors.Count == 0)
         {
+             Logger.Debug("[auto_all] no predefined colors found");
              MessageBox.Show("未找到颜色定义", "错误");
              return;
         }
-        Logger.Debug($"[auto_all] found {htmlColors.Count} colors");
+        Logger.Debug($"[auto_all] found {htmlColors.Count} colors, range={snapshot.recordedRange.Value}");
 
         var workers = ReadScanWorkers();
         _options.ScanWorkers = workers;
@@ -1424,6 +1578,7 @@ public partial class Form1 : Form
         _autoAllProgressTotal = 0;
         _autoAllProgressStart = DateTime.Now;
         _autoAllProgressActive = true;
+        Logger.Debug($"[auto_all] starting scan for all colors...");
 
         Task.Run(() =>
         {
@@ -1431,11 +1586,12 @@ public partial class Form1 : Form
             {
                 Logger.Debug("[auto_all] scanning...");
                 var groups = ScanMatchingPointsForAllColors(snapshot.recordedRange.Value, htmlColors, token);
+                Logger.Debug($"[auto_all] scan returned groups={groups.Count} cancelled={token.IsCancellationRequested}");
                 if (token.IsCancellationRequested) return;
 
                 int totalPoints = groups.Values.Sum(list => list.Count);
                 Logger.Debug($"[auto_all] scan done. total_points={totalPoints}");
-                
+
                 BeginInvoke((Action)(() => {
                     _autoAllProgressCurrent = 0;
                     _autoAllProgressTotal = totalPoints;
@@ -1449,7 +1605,9 @@ public partial class Form1 : Form
                     }
                 }));
 
+                Logger.Debug($"[auto_all] executing fill for {totalPoints} points...");
                 ExecuteAutoFillAll(groups, htmlColors, token);
+                Logger.Debug("[auto_all] ExecuteAutoFillAll completed");
             }
             catch (Exception ex)
             {
@@ -1457,6 +1615,7 @@ public partial class Form1 : Form
             }
             finally
             {
+                Logger.Debug("[auto_all] task finally: restoring UI");
                 BeginInvoke((Action)(() =>
                 {
                     _autoAllProgressActive = false;
@@ -1466,6 +1625,7 @@ public partial class Form1 : Form
                     RestorePreviewOverlayIfChecked();
                     var cts = Interlocked.Exchange(ref _autoAllCts, null);
                     cts?.Dispose();
+                    Logger.Debug("[auto_all] task cleanup done");
                 }));
             }
         }, token);
@@ -1543,6 +1703,7 @@ public partial class Form1 : Form
 
     private Dictionary<BgrColor, List<Point>> ScanMatchingPointsForAllColors(Rectangle rect, List<BgrColor> targets, CancellationToken token)
     {
+        Logger.Debug($"[scan_all] ScanMatchingPointsForAllColors rect={rect} targets={targets.Count}");
         var groups = new ConcurrentDictionary<BgrColor, ConcurrentBag<Point>>();
         foreach(var c in targets) groups[c] = new ConcurrentBag<Point>();
 
@@ -1629,11 +1790,14 @@ public partial class Form1 : Form
                 result[kvp.Key] = kvp.Value.ToList();
             }
         }
+        int totalPoints = result.Values.Sum(l => l.Count);
+        Logger.Debug($"[scan_all] result: {result.Count} colors matched, {totalPoints} total points");
         return result;
     }
 
     private void ExecuteAutoFillAll(Dictionary<BgrColor, List<Point>> groups, List<BgrColor> order, CancellationToken token)
     {
+        Logger.Debug($"[exec_all] ExecuteAutoFillAll start: groups={groups.Count} order={order.Count}");
         _autoFillAllStartTime = DateTime.Now;
         int total = groups.Values.Sum(l => l.Count);
         int processed = 0;
@@ -1647,6 +1811,7 @@ public partial class Form1 : Form
             .Where(c => groups.ContainsKey(c))
             .SelectMany(c => groups[c])
             .ToList();
+        Logger.Debug($"[exec_all] allOrderedPoints={allOrderedPoints.Count}, whites first then colors");
         BeginInvoke((Action)(() => SetOverlayFillPoints(allOrderedPoints, true)));
 
         // Ensure we yield focus away from our form initially
@@ -1654,12 +1819,25 @@ public partial class Form1 : Form
 
         foreach (var color in orderedColors)
         {
-            if (token.IsCancellationRequested) return;
-            if (!groups.ContainsKey(color)) continue;
+            if (token.IsCancellationRequested)
+            {
+                Logger.Debug("[exec_all] cancelled during color loop");
+                return;
+            }
+            if (!groups.ContainsKey(color))
+            {
+                Logger.Debug($"[exec_all] color [{color.R},{color.G},{color.B}] not in groups, skipping");
+                continue;
+            }
 
             var points = groups[color];
-            if (points.Count == 0) continue;
+            if (points.Count == 0)
+            {
+                Logger.Debug($"[exec_all] color [{color.R},{color.G},{color.B}] has 0 points, skipping");
+                continue;
+            }
             bool currentColorIsWhite = IsWhite(color);
+            Logger.Debug($"[exec_all] processing color [{color.R},{color.G},{color.B}] isWhite={currentColorIsWhite} points={points.Count}");
 
             int startIndex = 0;
             bool firstPointHandled = false;
@@ -1668,6 +1846,7 @@ public partial class Form1 : Form
                 if (token.IsCancellationRequested) return;
 
                 var first = points[startIndex];
+                Logger.Debug($"[exec_all] color first pt ({startIndex}/{points.Count}) pos=({first.X},{first.Y})");
                 Cursor.Position = first;
                 Thread.Sleep(_options.ActionDelayMs);
 
@@ -1703,6 +1882,7 @@ public partial class Form1 : Form
 
             if (!firstPointHandled)
             {
+                Logger.Debug($"[exec_all] color [{color.R},{color.G},{color.B}] no first point handled, skipping remaining");
                 if (currentColorIsWhite)
                 {
                     whiteColorCompleted = true;
@@ -1725,8 +1905,10 @@ public partial class Form1 : Form
             if (currentColorIsWhite)
             {
                 whiteColorCompleted = true;
+                Logger.Debug("[exec_all] white color completed, whiteColorCompleted=true");
             }
         }
+        Logger.Debug($"[exec_all] ExecuteAutoFillAll done: processed={processed}/{total}");
     }
 
     private void UpdateAutoAllOverlay(int processed)
