@@ -330,7 +330,7 @@ public partial class Form1 : Form
                 BeginInvoke((Action)(() => SetOverlayFillStartIndex(processed)));
 
                 // 全自动的白色跳过逻辑由调用方在分组前处理，这里只执行单点
-                Thread.Sleep(50);
+                Thread.Sleep(_options.ColorPickToFillDelayMs);
                 SendSpace();
             }
             else
@@ -1270,9 +1270,19 @@ public partial class Form1 : Form
 
     private void SendSpace()
     {
-        Thread.Sleep(_options.ActionDelayMs);
+        // 大量填涂时可能出现卡顿，导致单次空格被吞掉而触发无效。
+        // 默认连续发送 2 次，并在两次之间留出间隔，保证至少有一次能被目标窗口收到。
+        var repeat = _options.SpaceRepeatCount < 1 ? 1 : _options.SpaceRepeatCount;
         const ushort vk = 0x20;
-        SendKey(vk);
+        for (int i = 0; i < repeat; i++)
+        {
+            if (i > 0 && _options.SpaceRepeatGapMs > 0)
+            {
+                Thread.Sleep(_options.SpaceRepeatGapMs);
+            }
+            Logger.Debug($"[action] send space (#{i + 1}/{repeat})");
+            SendKey(vk);
+        }
     }
 
     private void SendKey(ushort vk)
@@ -1870,7 +1880,7 @@ public partial class Form1 : Form
                     continue;
                 }
 
-                Thread.Sleep(50);
+                Thread.Sleep(_options.ColorPickToFillDelayMs);
                 SendSpace();
                 processed++;
                 UpdateAutoAllOverlay(processed);

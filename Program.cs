@@ -114,6 +114,15 @@ static class Program
                 case "--action-delay-ms":
                     options.ActionDelayMs = ReadInt(args, ref i, options.ActionDelayMs);
                     break;
+                case "--space-repeat-count":
+                    options.SpaceRepeatCount = ReadInt(args, ref i, options.SpaceRepeatCount);
+                    break;
+                case "--space-repeat-gap-ms":
+                    options.SpaceRepeatGapMs = ReadInt(args, ref i, options.SpaceRepeatGapMs);
+                    break;
+                case "--color-pick-to-fill-delay-ms":
+                    options.ColorPickToFillDelayMs = ReadInt(args, ref i, options.ColorPickToFillDelayMs);
+                    break;
                 case "--scan-step":
                     options.ScanStep = ReadInt(args, ref i, options.ScanStep);
                     break;
