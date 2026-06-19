@@ -20,7 +20,7 @@ public static class Logger
             return;
         }
 
-        var path = Path.Combine(AppContext.BaseDirectory, "simple_color_watch.log");
+        var path = Path.Combine(BaseDir, "simple_color_watch.log");
         _writer = new StreamWriter(path, append: true)
         {
             AutoFlush = true
@@ -83,8 +83,16 @@ public static class Logger
 
     private static string GetErrorLogPath()
     {
-        return Path.Combine(AppContext.BaseDirectory, ErrorLogFileName);
+        return Path.Combine(BaseDir, ErrorLogFileName);
     }
+
+    // 单文件发布时 AppContext.BaseDirectory 指向临时解压目录（%TEMP%\.net\...），
+    // 而非 exe 实际所在目录。这里改用进程 exe 路径取目录，保证日志与用户可见的 exe 放在一起；
+    // 取不到时回退到 BaseDirectory，避免日志完全无法写入。
+    private static string BaseDir =>
+        string.IsNullOrEmpty(Environment.ProcessPath)
+            ? AppContext.BaseDirectory
+            : Path.GetDirectoryName(Environment.ProcessPath)!;
 
     private static void TrimErrorLogIfNeeded(string path)
     {
