@@ -47,6 +47,8 @@ public partial class Form1 : Form
     private readonly string _currentVersionText;
     private readonly Panel _compactDivider1 = new();
     private readonly Panel _compactDivider2 = new();
+    private readonly RadioButton radioSpeedBalanced = new();
+    private readonly RadioButton radioSpeedExtreme = new();
     private PreviewOverlayForm? _previewOverlay;
     private List<Point> _overlayFillPoints = new();
     private int _overlayFillStartIndex;
@@ -105,6 +107,28 @@ public partial class Form1 : Form
         _compactDivider2.Visible = false;
         Controls.Add(_compactDivider1);
         Controls.Add(_compactDivider2);
+
+        // 速度模式选项
+        radioSpeedBalanced.Text = "平衡";
+        radioSpeedBalanced.Checked = true;
+        radioSpeedBalanced.AutoSize = true;
+        radioSpeedBalanced.UseVisualStyleBackColor = true;
+        radioSpeedExtreme.Text = "极致速度";
+        radioSpeedExtreme.Checked = false;
+        radioSpeedExtreme.AutoSize = true;
+        radioSpeedExtreme.UseVisualStyleBackColor = true;
+        radioSpeedBalanced.CheckedChanged += (_, _) =>
+        {
+            if (radioSpeedBalanced.Checked) ApplySpeedPreset(SpeedPreset.Balanced);
+        };
+        radioSpeedExtreme.CheckedChanged += (_, _) =>
+        {
+            if (radioSpeedExtreme.Checked) ApplySpeedPreset(SpeedPreset.Extreme);
+        };
+        Controls.Add(radioSpeedBalanced);
+        Controls.Add(radioSpeedExtreme);
+        ApplySpeedPreset(SpeedPreset.Balanced);
+
         ApplyLayout(_layoutMode);
 
         SetHook();
@@ -309,6 +333,7 @@ public partial class Form1 : Form
             Thread.Sleep(500);
         }
 
+        // points 已经在调用方完成了聚类排序，这里直接按顺序遍历
         for (int i = 0; i < points.Count; i++)
         {
             if (token.IsCancellationRequested)
@@ -330,7 +355,6 @@ public partial class Form1 : Form
                 if (token.IsCancellationRequested) return;
                 BeginInvoke((Action)(() => SetOverlayFillStartIndex(processed)));
 
-                // 全自动的白色跳过逻辑由调用方在分组前处理，这里只执行单点
                 Thread.Sleep(_options.ColorPickToFillDelayMs);
                 SendSpace();
             }
@@ -346,9 +370,8 @@ public partial class Form1 : Form
                     Logger.Debug($"[auto_fill] fire pt=({pt.X},{pt.Y})");
                 }
                 FocusTargetUnderCursor();
-                Logger.Debug("[action] send space (auto_fill)");
-                SendSpace();
-                // 覆盖层本身点击穿透，直接更新已处理索引即可
+                Logger.Debug("[action] send space fill (auto_fill)");
+                SendSpaceForFill();
                 BeginInvoke((Action)(() => SetOverlayFillStartIndex(i + 1)));
             }
 
@@ -883,11 +906,16 @@ public partial class Form1 : Form
 
                 if (points.Count > 0)
                 {
-                    // 初始化填充覆盖层，复用全自动的显示逻辑
-                    Logger.Debug($"[auto_fill] setting up fill overlay with {points.Count} points");
-                    BeginInvoke((Action)(() => SetOverlayFillPoints(new List<Point>(points), false)));
-                    Logger.Debug($"[auto_fill] executing {points.Count} fill points...");
-                    ExecuteAutoFillPoints(points, false, token);
+                    // 对点进行聚类排序，使覆盖层显示顺序与实际填色顺序一致
+                    var clusters = FillPlanner.ClusterPoints(points, _options.ScanStep, _options.ClusterNeighborDistance);
+                    var orderedPoints = FillPlanner.FlattenClusters(clusters);
+                    Logger.Debug($"[auto_fill] clustered into {clusters.Count} groups, ordered={orderedPoints.Count} points");
+
+                    // 初始化填充覆盖层，使用聚类后的顺序
+                    Logger.Debug($"[auto_fill] setting up fill overlay with {orderedPoints.Count} points");
+                    BeginInvoke((Action)(() => SetOverlayFillPoints(new List<Point>(orderedPoints), false)));
+                    Logger.Debug($"[auto_fill] executing {orderedPoints.Count} fill points...");
+                    ExecuteAutoFillPoints(orderedPoints, false, token);
                     Logger.Debug($"[auto_fill] ExecuteAutoFillPoints completed");
                 }
                 else
@@ -1286,13 +1314,42 @@ public partial class Form1 : Form
         }
     }
 
+    /// <summary>
+    /// 填色状态专用的空格发送：使用更短的延迟和更少的重复次数以加快连续填色速度。
+    /// </summary>
+    private void SendSpaceForFill()
+    {
+        var repeat = _options.FillSpaceRepeatCount < 1 ? 1 : _options.FillSpaceRepeatCount;
+        const ushort vk = 0x20;
+        for (int i = 0; i < repeat; i++)
+        {
+            if (i > 0 && _options.FillSpaceRepeatGapMs > 0)
+            {
+                Thread.Sleep(_options.FillSpaceRepeatGapMs);
+            }
+            Logger.Debug($"[action] send space fill (#{i + 1}/{repeat})");
+            SendKeyWithDelay(vk, _options.FillActionDelayMs);
+        }
+    }
+
     private void SendKey(ushort vk)
     {
-        Thread.Sleep(_options.ActionDelayMs);
+        SendKeyWithDelay(vk, _options.ActionDelayMs);
+    }
+
+    /// <summary>
+    /// 发送按键，使用指定的延迟。
+    /// </summary>
+    private void SendKeyWithDelay(ushort vk, int delayMs)
+    {
+        if (delayMs > 0)
+        {
+            Thread.Sleep(delayMs);
+        }
         uint scan = NativeMethods.MapVirtualKey(vk, 0);
         if (_options.Debug)
         {
-            Logger.Debug($"[action] send key vk=0x{vk:X2} scan=0x{scan:X2}");
+            Logger.Debug($"[action] send key vk=0x{vk:X2} scan=0x{scan:X2} delay={delayMs}");
         }
         var inputs = new[]
         {
@@ -1818,11 +1875,18 @@ public partial class Form1 : Form
             .ToList();
         bool whiteColorCompleted = false;
 
-        var allOrderedPoints = orderedColors
-            .Where(c => groups.ContainsKey(c))
-            .SelectMany(c => groups[c])
-            .ToList();
-        Logger.Debug($"[exec_all] allOrderedPoints={allOrderedPoints.Count}, whites first then colors");
+        // 构建覆盖层点列表：按聚类后的实际处理顺序排列，使覆盖层显示与填色进度一致
+        var allOrderedPoints = new List<Point>();
+        foreach (var color in orderedColors)
+        {
+            if (!groups.TryGetValue(color, out var colorPoints) || colorPoints.Count == 0)
+            {
+                continue;
+            }
+            var clusters = FillPlanner.ClusterPoints(colorPoints, _options.ScanStep, _options.ClusterNeighborDistance);
+            allOrderedPoints.AddRange(FillPlanner.FlattenClusters(clusters));
+        }
+        Logger.Debug($"[exec_all] allOrderedPoints={allOrderedPoints.Count} (clustered order), whites first then colors");
         BeginInvoke((Action)(() => SetOverlayFillPoints(allOrderedPoints, true)));
 
         // Ensure we yield focus away from our form initially
@@ -1850,14 +1914,19 @@ public partial class Form1 : Form
             bool currentColorIsWhite = IsWhite(color);
             Logger.Debug($"[exec_all] processing color [{color.R},{color.G},{color.B}] isWhite={currentColorIsWhite} points={points.Count}");
 
+            // 对当前颜色的所有点进行聚类+最近邻排序，使同色相邻点可以快速划过
+            var clusters = FillPlanner.ClusterPoints(points, _options.ScanStep, _options.ClusterNeighborDistance);
+            var orderedPoints = FillPlanner.FlattenClusters(clusters);
+            Logger.Debug($"[exec_all] color clustered into {clusters.Count} groups, ordered={orderedPoints.Count}");
+
             int startIndex = 0;
             bool firstPointHandled = false;
-            while (startIndex < points.Count)
+            while (startIndex < orderedPoints.Count)
             {
                 if (token.IsCancellationRequested) return;
 
-                var first = points[startIndex];
-                Logger.Debug($"[exec_all] color first pt ({startIndex}/{points.Count}) pos=({first.X},{first.Y})");
+                var first = orderedPoints[startIndex];
+                Logger.Debug($"[exec_all] color first pt ({startIndex}/{orderedPoints.Count}) pos=({first.X},{first.Y})");
                 Cursor.Position = first;
                 Thread.Sleep(_options.ActionDelayMs);
 
@@ -1901,16 +1970,22 @@ public partial class Form1 : Form
                 continue;
             }
 
-            // Handle subsequent points for this color
-            for (int i = startIndex; i < points.Count; i++)
+            // Handle subsequent points for this color — 使用快速填色+聚类顺序
+            for (int i = startIndex; i < orderedPoints.Count; i++)
             {
                 if (token.IsCancellationRequested) return;
-                Cursor.Position = points[i];
+                Cursor.Position = orderedPoints[i];
                 // FocusTargetUnderCursor();
-                SendSpace();
+                SendSpaceForFill();
                 processed++;
                 UpdateAutoAllOverlay(processed);
                 UpdateAutoAllProgress(processed, total);
+
+                // 簇内连续点之间的可选等待（快速划过时通常为0）
+                if (i < orderedPoints.Count - 1 && _options.ClusterFillStepDelayMs > 0)
+                {
+                    Thread.Sleep(_options.ClusterFillStepDelayMs);
+                }
             }
 
             if (currentColorIsWhite)
@@ -1951,6 +2026,38 @@ public partial class Form1 : Form
     {
         _layoutMode = _layoutMode == UiLayoutMode.Vertical ? UiLayoutMode.Horizontal : UiLayoutMode.Vertical;
         ApplyLayout(_layoutMode);
+    }
+
+    private enum SpeedPreset
+    {
+        Balanced,
+        Extreme
+    }
+
+    /// <summary>
+    /// 应用速度预设。
+    /// 平衡：总耗时控制在 100ms 以内，保证准确性。
+    /// 极致速度：削减准确性，越快越好。
+    /// </summary>
+    private void ApplySpeedPreset(SpeedPreset preset)
+    {
+        switch (preset)
+        {
+            case SpeedPreset.Balanced:
+                // 平衡：40ms 延迟 + 2 次空格 + 10ms 间隔 ≈ 90ms/点（<100ms，保证准确性）
+                _options.FillActionDelayMs = 40;
+                _options.FillSpaceRepeatCount = 2;
+                _options.FillSpaceRepeatGapMs = 10;
+                Logger.Debug("[speed] preset=Balanced (delay=40ms repeat=2 gap=10ms ~90ms/pt)");
+                break;
+            case SpeedPreset.Extreme:
+                // 极致速度：20ms 延迟 + 1 次空格 + 0ms 间隔 ≈ 20ms/点
+                _options.FillActionDelayMs = 20;
+                _options.FillSpaceRepeatCount = 1;
+                _options.FillSpaceRepeatGapMs = 0;
+                Logger.Debug("[speed] preset=Extreme (delay=20ms repeat=1 gap=0ms ~20ms/pt)");
+                break;
+        }
     }
 
     private void ApplyLayout(UiLayoutMode mode)
@@ -2026,6 +2133,12 @@ public partial class Form1 : Form
                 progressMatch.Size = new Size(351, 28);
                 btnAutoFillAll.Location = new Point(12, 550);
                 btnAutoFillAll.Size = new Size(160, 26);
+                radioSpeedBalanced.Text = "平衡";
+                radioSpeedBalanced.Location = new Point(178, 553);
+                radioSpeedExtreme.Text = "极致速度";
+                radioSpeedExtreme.Location = new Point(252, 553);
+                radioSpeedBalanced.Visible = true;
+                radioSpeedExtreme.Visible = true;
                 btnToggleLayout.Location = new Point(218, 667);
                 btnToggleLayout.Size = new Size(145, 26);
                 labelAutoAll.Location = new Point(17, 590);
@@ -2034,7 +2147,7 @@ public partial class Form1 : Form
                 progressAutoAll.Size = new Size(351, 28);
                 linkGithubOrUpdate.Location = new Point(12, 671);
                 labelCurrentVersion.Location = new Point(12, 649);
-                btnToggleLayout.Text = "精简布局";
+                btnToggleLayout.Text = "切换为精简布局";
             }
             else
             {
@@ -2095,6 +2208,12 @@ public partial class Form1 : Form
                 btnAutoFillAll.Text = "全自动";
                 btnAutoFillAll.Location = new Point(494, 20);
                 btnAutoFillAll.Size = new Size(76, 26);
+                radioSpeedBalanced.Text = "平衡";
+                radioSpeedBalanced.Location = new Point(430, 108);
+                radioSpeedExtreme.Text = "极致";
+                radioSpeedExtreme.Location = new Point(492, 108);
+                radioSpeedBalanced.Visible = true;
+                radioSpeedExtreme.Visible = true;
 
                 labelAutoAll.Text = "总进度";
                 labelAutoAll.Location = new Point(430, 58);
@@ -2105,9 +2224,9 @@ public partial class Form1 : Form
                 // 区域1底部：入口
                 labelCurrentVersion.Location = new Point(10, 124);
                 linkGithubOrUpdate.Location = new Point(10, 146);
-                btnToggleLayout.Location = new Point(584, 142);
-                btnToggleLayout.Size = new Size(104, 26);
-                btnToggleLayout.Text = "完整布局";
+                btnToggleLayout.Location = new Point(548, 142);
+                btnToggleLayout.Size = new Size(145, 26);
+                btnToggleLayout.Text = "切换为完美布局";
 
                 _compactDivider1.Location = new Point(410, 16);
                 _compactDivider1.Height = 140;

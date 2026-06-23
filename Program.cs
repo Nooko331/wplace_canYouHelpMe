@@ -123,6 +123,21 @@ static class Program
                 case "--color-pick-to-fill-delay-ms":
                     options.ColorPickToFillDelayMs = ReadInt(args, ref i, options.ColorPickToFillDelayMs);
                     break;
+                case "--fill-action-delay-ms":
+                    options.FillActionDelayMs = ReadInt(args, ref i, options.FillActionDelayMs);
+                    break;
+                case "--fill-space-repeat-count":
+                    options.FillSpaceRepeatCount = ReadInt(args, ref i, options.FillSpaceRepeatCount);
+                    break;
+                case "--fill-space-repeat-gap-ms":
+                    options.FillSpaceRepeatGapMs = ReadInt(args, ref i, options.FillSpaceRepeatGapMs);
+                    break;
+                case "--cluster-neighbor-distance":
+                    options.ClusterNeighborDistance = ReadInt(args, ref i, options.ClusterNeighborDistance);
+                    break;
+                case "--cluster-fill-step-delay-ms":
+                    options.ClusterFillStepDelayMs = ReadInt(args, ref i, options.ClusterFillStepDelayMs);
+                    break;
                 case "--scan-step":
                     options.ScanStep = ReadInt(args, ref i, options.ScanStep);
                     break;
