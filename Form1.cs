@@ -1380,11 +1380,13 @@ public partial class Form1 : Form
                 }
             }
         };
+        // 必须在 SendInput 返回后立即保存 LastError，否则可能被后续代码覆盖
         var sent = NativeMethods.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+        var lastErr = Marshal.GetLastWin32Error();
         if (sent == 0)
         {
-            var err = Marshal.GetLastWin32Error();
-            Logger.Error($"[action] SendInput failed err={err}");
+            var fg = NativeMethods.GetForegroundWindow();
+            Logger.Error($"[action] SendInput failed sent={sent} lastErr={lastErr} (0x{lastErr:X8}) fgHwnd={fg}");
             return;
         }
 
@@ -1394,24 +1396,64 @@ public partial class Form1 : Form
         }
     }
 
+    private void SendMouseClick(uint downFlag, uint upFlag)
+    {
+        var inputs = new[]
+        {
+            new NativeMethods.INPUT
+            {
+                type = NativeMethods.INPUT_MOUSE,
+                U = new NativeMethods.INPUTUNION
+                {
+                    mi = new NativeMethods.MOUSEINPUT
+                    {
+                        dx = 0,
+                        dy = 0,
+                        mouseData = 0,
+                        dwFlags = downFlag,
+                        time = 0,
+                        dwExtraInfo = IntPtr.Zero
+                    }
+                }
+            },
+            new NativeMethods.INPUT
+            {
+                type = NativeMethods.INPUT_MOUSE,
+                U = new NativeMethods.INPUTUNION
+                {
+                    mi = new NativeMethods.MOUSEINPUT
+                    {
+                        dx = 0,
+                        dy = 0,
+                        mouseData = 0,
+                        dwFlags = upFlag,
+                        time = 0,
+                        dwExtraInfo = IntPtr.Zero
+                    }
+                }
+            }
+        };
+        var sent = NativeMethods.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+        var lastErr = Marshal.GetLastWin32Error();
+        if (sent == 0)
+        {
+            Logger.Error($"[action] SendMouseClick failed sent={sent} lastErr={lastErr} (0x{lastErr:X8})");
+        }
+    }
+
     private void ClickCurrentPosition()
     {
         Thread.Sleep(_options.ActionDelayMs);
-        Logger.Debug("[action] click left (down+up)");
-        mouse_event(0x02, 0, 0, 0, UIntPtr.Zero);
-        mouse_event(0x04, 0, 0, 0, UIntPtr.Zero);
+        Logger.Debug("[action] click left (down+up) via SendInput");
+        SendMouseClick(NativeMethods.MOUSEEVENTF_LEFTDOWN, NativeMethods.MOUSEEVENTF_LEFTUP);
     }
 
     private void ClickRightCurrentPosition()
     {
         Thread.Sleep(_options.ActionDelayMs);
-        Logger.Debug("[action] click right (down+up)");
-        mouse_event(0x08, 0, 0, 0, UIntPtr.Zero); // MOUSEEVENTF_RIGHTDOWN
-        mouse_event(0x10, 0, 0, 0, UIntPtr.Zero); // MOUSEEVENTF_RIGHTUP
+        Logger.Debug("[action] click right (down+up) via SendInput");
+        SendMouseClick(NativeMethods.MOUSEEVENTF_RIGHTDOWN, NativeMethods.MOUSEEVENTF_RIGHTUP);
     }
-
-    [DllImport("user32.dll")]
-    private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
 
     private static Point? PickSafePos(Rectangle? avoidRect)
     {
@@ -1544,7 +1586,7 @@ public partial class Form1 : Form
 
             _state.RecordColors(new List<BgrColor> { hover, clear }, new List<BgrColor> { hover, clear }, pos);
             Logger.Debug($"[record] raw_colors_rgb=[{string.Join(",", hover.ToRgbArray())}],[{string.Join(",", clear.ToRgbArray())}] pos=({pos.X},{pos.Y})");
-            // FocusTargetUnderCursor(); // Removed as requested
+            FocusTargetUnderCursor();
             Logger.Debug("[action] send key I");
             Thread.Sleep(50);
             SendKey(NativeMethods.VK_I);
@@ -2226,7 +2268,7 @@ public partial class Form1 : Form
                 linkGithubOrUpdate.Location = new Point(10, 146);
                 btnToggleLayout.Location = new Point(548, 142);
                 btnToggleLayout.Size = new Size(145, 26);
-                btnToggleLayout.Text = "切换为完美布局";
+                btnToggleLayout.Text = "切换为完整布局";
 
                 _compactDivider1.Location = new Point(410, 16);
                 _compactDivider1.Height = 140;

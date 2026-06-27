@@ -14,7 +14,12 @@ namespace WplaceColorWatch
         public const int VK_OEM_3 = 0xC0;
         public const int VK_I = 0x49;
 
+        public const int INPUT_MOUSE = 0;
         public const int INPUT_KEYBOARD = 1;
+        public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+        public const uint MOUSEEVENTF_LEFTUP = 0x0004;
+        public const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
+        public const uint MOUSEEVENTF_RIGHTUP = 0x0010;
         public const uint KEYEVENTF_KEYUP = 0x0002;
         public const uint KEYEVENTF_SCANCODE = 0x0008;
 
