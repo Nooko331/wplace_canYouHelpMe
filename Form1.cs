@@ -353,7 +353,12 @@ public partial class Form1 : Form
                 Thread.Sleep(200);
                 var recorded = PerformColorRecordAndAction();
                 if (token.IsCancellationRequested) return;
-                BeginInvoke((Action)(() => SetOverlayFillStartIndex(processed)));
+
+                // 低频更新覆盖层进度：仅每 10 个点或最后一个点时更新，减少 BeginInvoke 对焦点的干扰
+                if (processed % 10 == 0 || i == points.Count - 1)
+                {
+                    BeginInvoke((Action)(() => SetOverlayFillStartIndex(processed)));
+                }
 
                 Thread.Sleep(_options.ColorPickToFillDelayMs);
                 SendSpace();
@@ -372,7 +377,12 @@ public partial class Form1 : Form
                 FocusTargetUnderCursor();
                 Logger.Debug("[action] send space fill (auto_fill)");
                 SendSpaceForFill();
-                BeginInvoke((Action)(() => SetOverlayFillStartIndex(i + 1)));
+
+                // 低频更新覆盖层进度：仅每 10 个点或最后一个点时更新
+                if ((i + 1) % 10 == 0 || i == points.Count - 1)
+                {
+                    BeginInvoke((Action)(() => SetOverlayFillStartIndex(i + 1)));
+                }
             }
 
             processed++;
@@ -1339,6 +1349,8 @@ public partial class Form1 : Form
 
     /// <summary>
     /// 发送按键，使用指定的延迟。
+    /// 在调用 SendInput 之前会重新确认目标窗口的前台焦点，
+    /// 如果 SendInput 返回 0 则自动重试（最多 2 次），每次重试前重新获取焦点。
     /// </summary>
     private void SendKeyWithDelay(ushort vk, int delayMs)
     {
@@ -1380,14 +1392,37 @@ public partial class Form1 : Form
                 }
             }
         };
+
+        // 在 SendInput 前重新确认前台焦点，确保目标窗口处于前台
+        EnsureForegroundForSendInput();
+
         // 必须在 SendInput 返回后立即保存 LastError，否则可能被后续代码覆盖
         var sent = NativeMethods.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
         var lastErr = Marshal.GetLastWin32Error();
         if (sent == 0)
         {
-            var fg = NativeMethods.GetForegroundWindow();
-            Logger.Error($"[action] SendInput failed sent={sent} lastErr={lastErr} (0x{lastErr:X8}) fgHwnd={fg}");
-            return;
+            // SendInput 失败，尝试重试（最多 2 次）
+            const int maxRetries = 2;
+            for (int retry = 1; retry <= maxRetries; retry++)
+            {
+                Logger.Error($"[action] SendInput failed sent=0 lastErr={lastErr} (0x{lastErr:X8}), retry #{retry}/{maxRetries}");
+                // 重新确认前台焦点并等待切换生效
+                EnsureForegroundForSendInput();
+                Thread.Sleep(50);
+                sent = NativeMethods.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+                lastErr = Marshal.GetLastWin32Error();
+                if (sent != 0)
+                {
+                    Logger.Error($"[action] SendInput retry #{retry} succeeded sent={sent}");
+                    break;
+                }
+            }
+            if (sent == 0)
+            {
+                var fg = NativeMethods.GetForegroundWindow();
+                Logger.Error($"[action] SendInput failed after {maxRetries} retries sent={sent} lastErr={lastErr} (0x{lastErr:X8}) fgHwnd={fg}");
+                return;
+            }
         }
 
         if (_options.Debug)
@@ -1396,8 +1431,59 @@ public partial class Form1 : Form
         }
     }
 
+    /// <summary>
+    /// 在 SendInput 前重新获取光标位置下的窗口并调用 SetForegroundWindow 确保前台焦点。
+    /// 使用 AttachThreadInput 绑定当前线程与目标窗口线程的输入队列，
+    /// 以确保 SetForegroundWindow 在后台线程上也能成功。
+    /// </summary>
+    private void EnsureForegroundForSendInput()
+    {
+        NativeMethods.GetCursorPos(out var pt);
+        var hwnd = NativeMethods.WindowFromPoint(pt);
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        // 使用 AttachThreadInput 辅助 SetForegroundWindow 在后台线程上成功
+        uint currentTid = NativeMethods.GetCurrentThreadId();
+        uint targetTid = NativeMethods.GetWindowThreadProcessId(hwnd, out _);
+        bool attached = false;
+        if (targetTid != 0 && targetTid != currentTid)
+        {
+            attached = NativeMethods.AttachThreadInput(currentTid, targetTid, true);
+            if (_options.Debug)
+            {
+                Logger.Debug($"[action] AttachThreadInput attach={attached} curTid={currentTid} tgtTid={targetTid}");
+            }
+        }
+
+        var ok = NativeMethods.SetForegroundWindow(hwnd);
+        if (_options.Debug)
+        {
+            var fg = NativeMethods.GetForegroundWindow();
+            Logger.Debug($"[action] EnsureForeground hwnd={hwnd} setFgOk={ok} actualFg={fg}");
+        }
+
+        // 等待焦点切换生效（30ms 足够让 Windows 完成前台切换）
+        Thread.Sleep(30);
+
+        // 解绑线程输入队列
+        if (attached)
+        {
+            NativeMethods.AttachThreadInput(currentTid, targetTid, false);
+            if (_options.Debug)
+            {
+                Logger.Debug($"[action] AttachThreadInput detach curTid={currentTid} tgtTid={targetTid}");
+            }
+        }
+    }
+
     private void SendMouseClick(uint downFlag, uint upFlag)
     {
+        // 在 SendInput 前重新确认前台焦点
+        EnsureForegroundForSendInput();
+
         var inputs = new[]
         {
             new NativeMethods.INPUT
@@ -1437,7 +1523,26 @@ public partial class Form1 : Form
         var lastErr = Marshal.GetLastWin32Error();
         if (sent == 0)
         {
-            Logger.Error($"[action] SendMouseClick failed sent={sent} lastErr={lastErr} (0x{lastErr:X8})");
+            // SendInput 失败，尝试重试（最多 2 次）
+            const int maxRetries = 2;
+            for (int retry = 1; retry <= maxRetries; retry++)
+            {
+                Logger.Error($"[action] SendMouseClick failed sent=0 lastErr={lastErr} (0x{lastErr:X8}), retry #{retry}/{maxRetries}");
+                EnsureForegroundForSendInput();
+                Thread.Sleep(50);
+                sent = NativeMethods.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+                lastErr = Marshal.GetLastWin32Error();
+                if (sent != 0)
+                {
+                    Logger.Error($"[action] SendMouseClick retry #{retry} succeeded sent={sent}");
+                    break;
+                }
+            }
+            if (sent == 0)
+            {
+                var fg = NativeMethods.GetForegroundWindow();
+                Logger.Error($"[action] SendMouseClick failed after {maxRetries} retries sent={sent} lastErr={lastErr} (0x{lastErr:X8}) fgHwnd={fg}");
+            }
         }
     }
 
@@ -1549,7 +1654,19 @@ public partial class Form1 : Form
             else if (vkCode == NativeMethods.VK_A)
             {
                 Logger.Debug($"[hook] A pressed, recording color");
-                BeginInvoke((Action)(() => PerformColorRecordAndAction()));
+                BeginInvoke((Action)(() =>
+                {
+                    // 光标位于本程序窗口上时按 A：取色无意义，且此刻本程序窗口往往是前台，
+                    // 后续发送的 I 键 / 左键会被本程序吞掉，或左键直接点到自己的按钮上
+                    // （btnFill/btnAutoFillAll），表现为“按 A 却触发空格/涂色”。直接中止这次取色。
+                    var pos = Cursor.Position;
+                    if (IsCursorOverSelf(pos))
+                    {
+                        Logger.Debug($"[hook] A ignored: cursor over self at ({pos.X},{pos.Y})");
+                        return;
+                    }
+                    PerformColorRecordAndAction();
+                }));
             }
         }
         return NativeMethods.CallNextHookEx(_hookId, nCode, wParam, lParam);
@@ -1614,14 +1731,70 @@ public partial class Form1 : Form
         }
         if (hwnd != IntPtr.Zero)
         {
-            var ok = NativeMethods.SetForegroundWindow(hwnd);
+            // WindowFromPoint 可能返回子窗口句柄，而 SetForegroundWindow 需要顶层窗口；
+            // 解析到根窗口，保证后续焦点设置与确认比较都针对同一个顶层句柄。
+            var rootHwnd = NativeMethods.GetAncestor(hwnd, NativeMethods.GA_ROOT);
+            if (rootHwnd == IntPtr.Zero)
+            {
+                rootHwnd = hwnd;
+            }
+
+            // 使用 AttachThreadInput 辅助 SetForegroundWindow，确保在后台线程上也能成功
+            uint currentTid = NativeMethods.GetCurrentThreadId();
+            uint targetTid = NativeMethods.GetWindowThreadProcessId(rootHwnd, out var pid);
+            bool attached = false;
+            if (targetTid != 0 && targetTid != currentTid)
+            {
+                attached = NativeMethods.AttachThreadInput(currentTid, targetTid, true);
+                if (_options.Debug)
+                {
+                    Logger.Debug($"[action] FocusTarget AttachThreadInput attach={attached} curTid={currentTid} tgtTid={targetTid}");
+                }
+            }
+
+            var ok = NativeMethods.SetForegroundWindow(rootHwnd);
             if (_options.Debug)
             {
-                var tid = NativeMethods.GetWindowThreadProcessId(hwnd, out var pid);
-                Logger.Debug($"[action] focus hwnd={hwnd} tid={tid} pid={pid} ok={ok}");
+                Logger.Debug($"[action] focus hwnd={rootHwnd} tid={targetTid} pid={pid} ok={ok} attach={attached}");
+            }
+
+            // 解绑线程输入队列
+            if (attached)
+            {
+                NativeMethods.AttachThreadInput(currentTid, targetTid, false);
+                if (_options.Debug)
+                {
+                    Logger.Debug($"[action] FocusTarget AttachThreadInput detach curTid={currentTid} tgtTid={targetTid}");
+                }
+            }
+
+            // SetForegroundWindow 是异步的：旧前台窗口可能尚未真正切走，此时紧接着发送的 I 键
+            // 会被旧前台窗口（往往是本程序自身）吞掉，导致取色失败、随后的左键落到游戏上被当成一次涂色。
+            // 这里轮询确认前台已切换到目标窗口后再继续，固定 sleep 无法保证切换完成。
+            if (!WaitForForeground(rootHwnd, 150))
+            {
+                Logger.Debug($"[action] FocusTarget foreground not confirmed hwnd={rootHwnd}");
             }
         }
         Thread.Sleep(_options.ActionDelayMs);
+    }
+
+    /// <summary>
+    /// 轮询确认目标窗口已成为前台窗口，最多等待 timeoutMs 毫秒。
+    /// SetForegroundWindow 是异步的，固定 sleep 无法保证切换完成。
+    /// </summary>
+    private static bool WaitForForeground(IntPtr hwnd, int timeoutMs)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < deadline)
+        {
+            if (NativeMethods.GetForegroundWindow() == hwnd)
+            {
+                return true;
+            }
+            Thread.Sleep(10);
+        }
+        return NativeMethods.GetForegroundWindow() == hwnd;
     }
 
     private void CancelAutoAll()
@@ -1980,7 +2153,11 @@ public partial class Form1 : Form
                 if (token.IsCancellationRequested) return;
 
                 // 颜色检测完成后重新显示剩余像素点
-                BeginInvoke((Action)(() => SetOverlayFillStartIndex(processed)));
+                // 低频更新：仅每 10 个点或首个点时更新覆盖层
+                if (processed % 10 == 0 || processed == 1)
+                {
+                    BeginInvoke((Action)(() => SetOverlayFillStartIndex(processed)));
+                }
 
                 if (whiteColorCompleted && !currentColorIsWhite && IsWhite(recorded.clear))
                 {
@@ -2041,7 +2218,12 @@ public partial class Form1 : Form
 
     private void UpdateAutoAllOverlay(int processed)
     {
-        BeginInvoke((Action)(() => SetOverlayFillStartIndex(processed)));
+        // 低频更新覆盖层进度：仅每 10 个点时更新，减少 BeginInvoke 对焦点的干扰
+        // 最后一个点的更新由 ExecuteAutoFillAll 结束时的 finally 块中 RestorePreviewOverlayIfChecked 处理
+        if (processed % 10 == 0)
+        {
+            BeginInvoke((Action)(() => SetOverlayFillStartIndex(processed)));
+        }
     }
 
     private void UpdateAutoAllProgress(int current, int total)

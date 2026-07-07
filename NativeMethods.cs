@@ -151,6 +151,24 @@ namespace WplaceColorWatch
         [DllImport("user32.dll")]
         public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
+        [DllImport("user32.dll")]
+        public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
+        [DllImport("kernel32.dll")]
+        public static extern uint GetCurrentThreadId();
+
+        /// <summary>
+        /// Overload of WindowFromPoint that accepts a System.Drawing.Point
+        /// for convenience when calling from code that uses System.Drawing coordinates.
+        /// </summary>
+        [DllImport("user32.dll")]
+        public static extern IntPtr WindowFromPoint(System.Drawing.Point Point);
+
+        public const uint GA_ROOT = 2;
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
+
         public static readonly IntPtr HWND_BROADCAST = new IntPtr(0xffff);
         public const int SW_RESTORE = 9;
         public const int SW_SHOW = 5;
