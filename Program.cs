@@ -138,6 +138,30 @@ static class Program
                 case "--cluster-fill-step-delay-ms":
                     options.ClusterFillStepDelayMs = ReadInt(args, ref i, options.ClusterFillStepDelayMs);
                     break;
+                case "--island-color-tol":
+                    options.IslandColorTol = ReadInt(args, ref i, options.IslandColorTol);
+                    break;
+                case "--island-max-size":
+                    options.IslandMaxSize = ReadInt(args, ref i, options.IslandMaxSize);
+                    break;
+                case "--island-moat-ratio":
+                    if (i + 1 < args.Length && double.TryParse(args[i + 1], out double mr)) { i++; options.IslandMoatRatio = mr; }
+                    break;
+                case "--island-min-outer-multiplier":
+                    if (i + 1 < args.Length && double.TryParse(args[i + 1], out double mm)) { i++; options.IslandMinOuterMultiplier = mm; }
+                    break;
+                case "--island-strong-moat-ratio":
+                    if (i + 1 < args.Length && double.TryParse(args[i + 1], out double smr)) { i++; options.IslandStrongMoatRatio = smr; }
+                    break;
+                case "--island-search-radius":
+                    options.IslandSearchRadius = ReadInt(args, ref i, options.IslandSearchRadius);
+                    break;
+                case "--island-require-outer-big":
+                    if (i + 1 < args.Length && bool.TryParse(args[i + 1], out bool rb2)) { i++; options.IslandRequireOuterBig = rb2; }
+                    break;
+                case "--island-diagnose":
+                    if (i + 1 < args.Length && bool.TryParse(args[i + 1], out bool id2)) { i++; options.IslandDiagnose = id2; }
+                    break;
                 case "--scan-step":
                     options.ScanStep = ReadInt(args, ref i, options.ScanStep);
                     break;

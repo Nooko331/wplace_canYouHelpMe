@@ -37,6 +37,7 @@ public partial class Form1 : Form
     private NativeMethods.LowLevelKeyboardProc? _hookProc;
     private CancellationTokenSource? _scanCts;
     private CancellationTokenSource? _autoAllCts;
+    private CancellationTokenSource? _islandCts;
     private int _autoAllProgressCurrent;
     private int _autoAllProgressTotal;
     private DateTime _autoAllProgressStart;
@@ -49,6 +50,8 @@ public partial class Form1 : Form
     private readonly Panel _compactDivider2 = new();
     private readonly RadioButton radioSpeedBalanced = new();
     private readonly RadioButton radioSpeedExtreme = new();
+    private readonly CheckBox checkIslandDetect = new();
+    private readonly Button btnRunIslandDetect = new();
     private PreviewOverlayForm? _previewOverlay;
     private List<Point> _overlayFillPoints = new();
     private int _overlayFillStartIndex;
@@ -128,6 +131,22 @@ public partial class Form1 : Form
         Controls.Add(radioSpeedBalanced);
         Controls.Add(radioSpeedExtreme);
         ApplySpeedPreset(SpeedPreset.Balanced);
+
+        // 遗漏检测控件
+        checkIslandDetect.Text = "启用遗漏检测";
+        checkIslandDetect.AutoSize = true;
+        checkIslandDetect.Checked = _options.IslandDetectEnabled;
+        checkIslandDetect.UseVisualStyleBackColor = true;
+        checkIslandDetect.CheckedChanged += (_, _) =>
+        {
+            _options.IslandDetectEnabled = checkIslandDetect.Checked;
+            Logger.Debug($"[ui] IslandDetectEnabled={_options.IslandDetectEnabled}");
+        };
+        btnRunIslandDetect.Text = "运行遗漏检测";
+        btnRunIslandDetect.UseVisualStyleBackColor = true;
+        btnRunIslandDetect.Click += (_, _) => BeginIslandDetection();
+        Controls.Add(checkIslandDetect);
+        Controls.Add(btnRunIslandDetect);
 
         ApplyLayout(_layoutMode);
 
@@ -902,6 +921,7 @@ public partial class Form1 : Form
         Logger.Debug("[auto_fill] scanning...");
         Task.Run(() =>
         {
+            bool fillSucceeded = false;
             try
             {
                 var points = ScanMatchingPoints(snapshot.recordedRange.Value, fillTargets, token);
@@ -927,6 +947,10 @@ public partial class Form1 : Form
                     Logger.Debug($"[auto_fill] executing {orderedPoints.Count} fill points...");
                     ExecuteAutoFillPoints(orderedPoints, false, token);
                     Logger.Debug($"[auto_fill] ExecuteAutoFillPoints completed");
+                    if (!token.IsCancellationRequested)
+                    {
+                        fillSucceeded = true;
+                    }
                 }
                 else
                 {
@@ -953,6 +977,11 @@ public partial class Form1 : Form
                     var cts = Interlocked.Exchange(ref _scanCts, null);
                     cts?.Dispose();
                     Logger.Debug("[auto_fill] task cleanup done");
+                    if (fillSucceeded && _options.IslandDetectEnabled)
+                    {
+                        Logger.Debug("[auto_fill] island detect enabled, triggering");
+                        BeginIslandDetection();
+                    }
                 }));
             }
         }, token);
@@ -1865,6 +1894,7 @@ public partial class Form1 : Form
 
         Task.Run(() =>
         {
+            bool autoFillSucceeded = false;
             try
             {
                 Logger.Debug("[auto_all] scanning...");
@@ -1891,6 +1921,10 @@ public partial class Form1 : Form
                 Logger.Debug($"[auto_all] executing fill for {totalPoints} points...");
                 ExecuteAutoFillAll(groups, htmlColors, token);
                 Logger.Debug("[auto_all] ExecuteAutoFillAll completed");
+                if (!token.IsCancellationRequested)
+                {
+                    autoFillSucceeded = true;
+                }
             }
             catch (Exception ex)
             {
@@ -1909,6 +1943,328 @@ public partial class Form1 : Form
                     var cts = Interlocked.Exchange(ref _autoAllCts, null);
                     cts?.Dispose();
                     Logger.Debug("[auto_all] task cleanup done");
+                    if (autoFillSucceeded && _options.IslandDetectEnabled)
+                    {
+                        Logger.Debug("[auto_all] island detect enabled, triggering");
+                        BeginIslandDetection();
+                    }
+                }));
+            }
+        }, token);
+    }
+
+    // ==================== 遗漏点孤岛检测 ====================
+
+    /// <summary>
+    /// 扫描框选范围，返回带标签的网格点列表：(屏幕坐标, 匹配到的预设色)。
+    /// 不匹配任何预设色的点不出现在结果中——孤岛检测据此把它们视作"护城河"。
+    /// 骨架与 ScanMatchingPointsForAllColors 一致，但保留逐点 (Point, Color) 便于空间拓扑分析。
+    /// </summary>
+    /// <summary>
+    /// 扫描框选范围，返回完整采样网格：hex key → 标签。
+    /// value 为 null 表示该采样点未匹配任何预设色（护城河来源）；非 null 表示匹配到该色。
+    /// 必须包含所有采样点（含未匹配），孤岛检测的护城河判定依赖“采样了但没匹配”的点。
+    /// 用 (col,row) 六边形坐标作 key，与 ScanPattern 的品字形采样严格对应。
+    /// </summary>
+    private Dictionary<long, BgrColor?> ScanLabeledGrid(Rectangle rect, List<BgrColor> targets, CancellationToken token)
+    {
+        Logger.Debug($"[scan_island] ScanLabeledGrid rect={rect} targets={targets.Count} tol={_options.IslandColorTol}(island) step={_options.ScanStep} workers={_options.ScanWorkers}");
+
+        int width = Math.Max(1, rect.Width);
+        int height = Math.Max(1, rect.Height);
+        int step = _options.ScanStep;
+        int countX = ((width - 1) / step) + 1;
+        int countY = ((height - 1) / step) + 1;
+        int total = Math.Max(0, countX * countY);
+        _state.StartScan(total);
+        long lastProgressTicks = Environment.TickCount64;
+
+        using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(bitmap))
+        {
+            g.CopyFromScreen(rect.Left, rect.Top, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
+        }
+
+        var bitmapRect = new Rectangle(0, 0, width, height);
+        var data = bitmap.LockBits(bitmapRect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        byte[] buffer;
+        try
+        {
+            int bytes = Math.Abs(data.Stride) * height;
+            buffer = new byte[bytes];
+            Marshal.Copy(data.Scan0, buffer, 0, bytes);
+        }
+        finally
+        {
+            bitmap.UnlockBits(data);
+        }
+
+        int stride = data.Stride;
+        int islandTol = _options.IslandColorTol;
+        BgrColor ReadBufferPixel(int x, int y)
+        {
+            int offset = (y * stride) + (x * 4);
+            byte b = buffer[offset];
+            byte g = buffer[offset + 1];
+            byte r = buffer[offset + 2];
+            return new BgrColor(b, g, r);
+        }
+
+        int done = 0;
+        void MaybeUpdateProgress(int doneValue)
+        {
+            var now = Environment.TickCount64;
+            var prev = Interlocked.Read(ref lastProgressTicks);
+            if (now - prev < 200)
+            {
+                return;
+            }
+            if (Interlocked.CompareExchange(ref lastProgressTicks, now, prev) == prev)
+            {
+                _state.SetScanProgress(total, doneValue);
+            }
+        }
+
+        var grid = new ConcurrentDictionary<long, BgrColor?>();
+        int matchedCount = 0;
+        try
+        {
+            Parallel.For(0, countY,
+                new ParallelOptions { MaxDegreeOfParallelism = _options.ScanWorkers, CancellationToken = token },
+                (row) =>
+                {
+                    int y = row * step;
+                    if (y >= height)
+                    {
+                        return;
+                    }
+                    int startOffset = (row % 2 == 1) ? (step / 2) : 0;
+                    int localMatched = 0;
+                    for (int col = 0; col < countX; col++)
+                    {
+                        int x = col * step + startOffset;
+                        if (x >= width)
+                        {
+                            break;
+                        }
+                        if (token.IsCancellationRequested)
+                        {
+                            return;
+                        }
+                        var bgr = ReadBufferPixel(x, y);
+                        int localMin = int.MaxValue;
+                        BgrColor? bestTarget = null;
+                        foreach (var t in targets)
+                        {
+                            int diff = bgr.MaxDiff(t);
+                            if (diff < localMin)
+                            {
+                                localMin = diff;
+                                bestTarget = t;
+                            }
+                        }
+                        BgrColor? label = (bestTarget.HasValue && localMin <= islandTol) ? bestTarget : null;
+                        grid[IslandDetector.ToHexKey(col, row)] = label;
+                        if (label.HasValue)
+                        {
+                            localMatched++;
+                        }
+                    }
+                    Interlocked.Add(ref matchedCount, localMatched);
+                    var newDone = Interlocked.Add(ref done, countX);
+                    MaybeUpdateProgress(newDone);
+                });
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.Debug("[scan_island] canceled");
+        }
+        _state.SetScanProgress(total, done);
+
+        var result = new Dictionary<long, BgrColor?>(grid);
+        Logger.Debug($"[scan_island] scanned={result.Count} matched={matchedCount} (moat sources={result.Count - matchedCount})");
+        return result;
+    }
+
+    /// <summary>
+    /// 遗漏点检测主流程：扫描建图 → 孤岛判定 → 标注为待处理点 → 弹窗确认 → 复用全自动填涂补涂。
+    /// 在后台 Task 中运行，所有 UI 操作通过 BeginInvoke 切回 UI 线程。
+    /// </summary>
+    private void RunIslandDetection(Rectangle rect, CancellationToken token)
+    {
+        Logger.Debug("[island] RunIslandDetection start");
+        var targets = GetPredefinedColors();
+        if (targets.Count == 0)
+        {
+            BeginInvoke((Action)(() => MessageBox.Show("未找到颜色定义", "错误")));
+            return;
+        }
+
+        // 1) 扫描建图
+        var labeled = ScanLabeledGrid(rect, targets, token);
+        if (token.IsCancellationRequested)
+        {
+            return;
+        }
+
+        // 2) 孤岛判定：小簇 + 护城河 + 外围同色大簇
+        var islands = IslandDetector.Detect(
+            labeled,
+            rect,
+            _options.ScanStep,
+            _options.IslandMaxSize,
+            _options.IslandMoatRatio,
+            _options.IslandRequireOuterBig,
+            _options.IslandSearchRadius,
+            _options.IslandMinOuterMultiplier,
+            _options.IslandStrongMoatRatio);
+        int totalMissed = islands.Sum(i => i.Points.Count);
+        Logger.Debug($"[island] islands={islands.Count} totalMissed={totalMissed}");
+
+        // 诊断：无论是否找到遗漏点，都输出网格分布，用于定位“测不出”根因
+        if (_options.IslandDiagnose)
+        {
+            var diag = IslandDetector.Diagnose(labeled, _options.IslandMaxSize);
+            foreach (var line in diag.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                Logger.Debug($"[diag] {line}");
+            }
+
+            if (islands.Count == 0 || totalMissed == 0)
+            {
+                Logger.Debug("[island] no missed points found");
+                var msg = "未检测到遗漏点。\n\n诊断信息：\n" + diag;
+                BeginInvoke((Action)(() => MessageBox.Show(msg, "遗漏检测", MessageBoxButtons.OK, MessageBoxIcon.Information)));
+                return;
+            }
+        }
+        else if (islands.Count == 0 || totalMissed == 0)
+        {
+            Logger.Debug("[island] no missed points found");
+            BeginInvoke((Action)(() => MessageBox.Show("未检测到遗漏点", "遗漏检测")));
+            return;
+        }
+
+        // 3) 按颜色分组 + 聚类排序，供覆盖层显示与补涂复用
+        var groups = new Dictionary<BgrColor, List<Point>>();
+        foreach (var isl in islands)
+        {
+            if (!groups.TryGetValue(isl.Color, out var list))
+            {
+                list = new List<Point>();
+                groups[isl.Color] = list;
+            }
+            list.AddRange(isl.Points);
+        }
+        var orderedMissed = new List<Point>();
+        foreach (var kv in groups)
+        {
+            var clusters = FillPlanner.ClusterPoints(kv.Value, _options.ScanStep, _options.ClusterNeighborDistance);
+            orderedMissed.AddRange(FillPlanner.FlattenClusters(clusters));
+        }
+
+        // 4) 重新标注为待处理点（覆盖层显示），让用户能看着遗漏点确认
+        BeginInvoke((Action)(() => SetOverlayFillPoints(orderedMissed, true)));
+
+        // 5) 弹窗确认（必须在 UI 线程）
+        bool confirm = false;
+        using var done = new ManualResetEventSlim(false);
+        BeginInvoke((Action)(() =>
+        {
+            confirm = MessageBox.Show(
+                $"检测到 {totalMissed} 个遗漏点（{islands.Count} 处孤岛）。\n请确认这些点是否需要补涂，确认后将自动补涂。",
+                "遗漏检测", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+            done.Set();
+        }));
+        done.Wait(token);
+        if (token.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (!confirm)
+        {
+            Logger.Debug("[island] user declined, skipping refill");
+            BeginInvoke((Action)(() => ClearOverlayFill()));
+            return;
+        }
+
+        // 6) 补涂：复用全自动填涂流程（白色优先），ExecuteAutoFillAll 会自管覆盖层/进度/取色/空格
+        var order = groups.Keys
+            .Where(IsWhite)
+            .Concat(groups.Keys.Where(c => !IsWhite(c)))
+            .ToList();
+        Logger.Debug($"[island] refilling {totalMissed} points across {groups.Count} colors");
+        ExecuteAutoFillAll(groups, order, token);
+        Logger.Debug("[island] refill done");
+    }
+
+    /// <summary>
+    /// 遗漏检测入口（手动按钮 & 自动 hook 共用）：校验范围、禁用 UI、启动后台检测 Task。
+    /// </summary>
+    private void BeginIslandDetection()
+    {
+        Logger.Debug("[ui] BeginIslandDetection");
+        if (!btnRunIslandDetect.Enabled)
+        {
+            Logger.Debug("[island] button disabled, skipping");
+            return;
+        }
+        var snapshot = _state.Snapshot();
+        if (!snapshot.recordedRange.HasValue)
+        {
+            Logger.Debug("[island] no range, showing message box");
+            MessageBox.Show("请框选范围", "提示");
+            return;
+        }
+
+        _options.ScanStep = ReadScanStep();
+        if (ScanStep.Text != _options.ScanStep.ToString())
+        {
+            ScanStep.Text = _options.ScanStep.ToString();
+        }
+        var workers = ReadScanWorkers();
+        _options.ScanWorkers = workers;
+        if (textCores.Text != workers.ToString())
+        {
+            textCores.Text = workers.ToString();
+        }
+
+        btnRunIslandDetect.Enabled = false;
+        btnFill.Enabled = false;
+        btnAutoFillAll.Enabled = false;
+        btnRange.Enabled = false;
+        HidePreviewOverlay();
+
+        CancelScan();
+        CancelAutoAll();
+        _islandCts?.Dispose();
+        _islandCts = new CancellationTokenSource();
+        var token = _islandCts.Token;
+        Logger.Debug("[island] starting detection task...");
+
+        Task.Run(() =>
+        {
+            try
+            {
+                RunIslandDetection(snapshot.recordedRange.Value, token);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"[island] error: {ex}");
+            }
+            finally
+            {
+                BeginInvoke((Action)(() =>
+                {
+                    btnRunIslandDetect.Enabled = true;
+                    btnFill.Enabled = true;
+                    btnAutoFillAll.Enabled = true;
+                    btnRange.Enabled = true;
+                    RestorePreviewOverlayIfChecked();
+                    var cts = Interlocked.Exchange(ref _islandCts, null);
+                    cts?.Dispose();
+                    Logger.Debug("[island] task cleanup done");
                 }));
             }
         }, token);
@@ -2291,7 +2647,7 @@ public partial class Form1 : Form
         {
             if (mode == UiLayoutMode.Vertical)
             {
-                ClientSize = new Size(383, 720);
+                ClientSize = new Size(383, 760);
                 _compactDivider1.Visible = false;
                 _compactDivider2.Visible = false;
                 color1.Visible = true;
@@ -2363,14 +2719,21 @@ public partial class Form1 : Form
                 radioSpeedExtreme.Location = new Point(252, 553);
                 radioSpeedBalanced.Visible = true;
                 radioSpeedExtreme.Visible = true;
-                btnToggleLayout.Location = new Point(218, 667);
-                btnToggleLayout.Size = new Size(145, 26);
                 labelAutoAll.Location = new Point(17, 590);
                 labelAutoAllValue.Location = new Point(160, 590);
                 progressAutoAll.Location = new Point(12, 615);
                 progressAutoAll.Size = new Size(351, 28);
-                linkGithubOrUpdate.Location = new Point(12, 671);
-                labelCurrentVersion.Location = new Point(12, 649);
+                checkIslandDetect.Text = "启用遗漏检测";
+                checkIslandDetect.Location = new Point(12, 652);
+                checkIslandDetect.Visible = true;
+                btnRunIslandDetect.Text = "运行遗漏检测";
+                btnRunIslandDetect.Location = new Point(12, 678);
+                btnRunIslandDetect.Size = new Size(160, 26);
+                btnRunIslandDetect.Visible = true;
+                btnToggleLayout.Location = new Point(178, 678);
+                btnToggleLayout.Size = new Size(145, 26);
+                labelCurrentVersion.Location = new Point(12, 712);
+                linkGithubOrUpdate.Location = new Point(12, 734);
                 btnToggleLayout.Text = "切换为精简布局";
             }
             else
@@ -2438,6 +2801,13 @@ public partial class Form1 : Form
                 radioSpeedExtreme.Location = new Point(492, 108);
                 radioSpeedBalanced.Visible = true;
                 radioSpeedExtreme.Visible = true;
+                checkIslandDetect.Text = "启用遗漏检测";
+                checkIslandDetect.Location = new Point(248, 152);
+                checkIslandDetect.Visible = true;
+                btnRunIslandDetect.Text = "运行遗漏检测";
+                btnRunIslandDetect.Location = new Point(430, 138);
+                btnRunIslandDetect.Size = new Size(76, 26);
+                btnRunIslandDetect.Visible = true;
 
                 labelAutoAll.Text = "总进度";
                 labelAutoAll.Location = new Point(430, 58);
