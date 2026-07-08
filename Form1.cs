@@ -572,6 +572,27 @@ public partial class Form1 : Form
         return Bounds.Contains(pos);
     }
 
+    private bool IsOperationActive()
+    {
+        return _scanCts != null || _autoAllCts != null || _islandCts != null;
+    }
+
+    private void SetOperationControlsEnabled(bool enabled)
+    {
+        btnRange.Enabled = enabled;
+        btnFill.Enabled = enabled;
+        btnAutoFillAll.Enabled = enabled;
+        btnRunIslandDetect.Enabled = enabled;
+        btnAutoCores.Enabled = enabled;
+        btnToggleLayout.Enabled = enabled;
+        textCores.Enabled = enabled;
+        ScanStep.Enabled = enabled;
+        checkShowRange.Enabled = enabled;
+        radioSpeedBalanced.Enabled = enabled;
+        radioSpeedExtreme.Enabled = enabled;
+        linkGithubOrUpdate.Enabled = enabled;
+    }
+
     private void BeginRangeSelect()
     {
         Logger.Debug("[ui] BeginRangeSelect clicked");
@@ -864,13 +885,13 @@ public partial class Form1 : Form
         if (snapshot.recordedBgrs.Count == 0)
         {
             Logger.Debug("[auto_fill] no colors recorded, showing message box");
-            MessageBox.Show("请通过 A 键选取颜色", "提示");
+            IslandConfirmDialog.Show(this, "请通过 A 键选取颜色", "提示", false);
             return;
         }
         if (!snapshot.recordedRange.HasValue)
         {
             Logger.Debug("[auto_fill] no range, showing message box");
-            MessageBox.Show("请框选范围", "提示");
+            IslandConfirmDialog.Show(this, "请框选范围", "提示", false);
             return;
         }
         // 将用户取色标准化到预定义调色板，以避免屏幕取色与游戏实际颜色的微小差异
@@ -900,7 +921,7 @@ public partial class Form1 : Form
         }
         Logger.Debug($"[auto_fill] workers={workers} step={_options.ScanStep}");
         _state.StartAutoFill();
-        btnFill.Enabled = false;
+        SetOperationControlsEnabled(false);
         HidePreviewOverlay();
         Logger.Debug("[auto_fill] starting scan task...");
         Thread.Sleep(200);
@@ -941,7 +962,7 @@ public partial class Form1 : Form
                     Logger.Debug("[auto_fill] no points found, fill skipped");
                     BeginInvoke((Action)(() =>
                     {
-                        MessageBox.Show("未找到匹配颜色的像素点，请检查颜色容差设置", "提示");
+                        IslandConfirmDialog.Show(this, "未找到匹配颜色的像素点，请检查颜色容差设置", "提示", false);
                     }));
                 }
             }
@@ -954,7 +975,7 @@ public partial class Form1 : Form
                 Logger.Debug("[auto_fill] task finally: restoring UI");
                 BeginInvoke((Action)(() =>
                 {
-                    btnFill.Enabled = true;
+                    SetOperationControlsEnabled(true);
                     _state.StopAll();
                     ClearOverlayFill();
                     RestorePreviewOverlayIfChecked();
@@ -1250,9 +1271,9 @@ public partial class Form1 : Form
         return DefaultScanStep;
     }
 
-    private static void ShowInvalidInputMessage()
+    private void ShowInvalidInputMessage()
     {
-        MessageBox.Show("输入内容无效。", "提示");
+        IslandConfirmDialog.Show(this, "输入内容无效。", "提示", false);
     }
 
     private void NumericTextBoxOnKeyDown(object? sender, KeyEventArgs e)
@@ -1626,6 +1647,7 @@ public partial class Form1 : Form
         _startupActivationTimer = null;
         CancelScan();
         CancelAutoAll();
+        CancelIsland();
         Unhook();
         _previewOverlay?.Close();
         _previewOverlay?.Dispose();
@@ -1637,21 +1659,41 @@ public partial class Form1 : Form
         if (nCode >= 0 && wParam == (IntPtr)NativeMethods.WM_KEYDOWN)
         {
             int vkCode = Marshal.ReadInt32(lParam);
-            if (vkCode == NativeMethods.VK_ESCAPE)
+            // KBDLLHOOKSTRUCT.flags 位于偏移 8。LL 低级键盘钩子也会收到 SendInput 注入的事件，
+            // 据此把“程序自己发出的按键”（injected）与“用户真实按键”区分开。
+            int llFlags = Marshal.ReadInt32(lParam, 8);
+            bool injected = (llFlags & (NativeMethods.LLKHF_INJECTED | NativeMethods.LLKHF_LOWER_IL_INJECTED)) != 0;
+            // 注入事件（本程序 SendInput 发出的 I/空格）一律放行，否则会被下面的屏蔽逻辑吞掉，
+            // 表现为“取不到色、只有首尾两个点被涂”。
+            bool operationActive = !injected && IsOperationActive();
+
+            if (vkCode == NativeMethods.VK_ESCAPE && !injected)
             {
                 Logger.Debug($"[hook] ESC pressed, stopping all");
                 BeginInvoke((Action)(() =>
                 {
-                    Logger.Debug("[hook] ESC BeginInvoke: calling StopAll/CancelScan/CancelAutoAll");
+                    Logger.Debug("[hook] ESC BeginInvoke: calling StopAll/CancelScan/CancelAutoAll/CancelIsland");
                     _state.StopAll();
                     CancelScan();
                     CancelAutoAll();
+                    CancelIsland();
+                    SetOperationControlsEnabled(true);
                     Logger.Debug("[hook] ESC: all stopped, restoring overlay if needed");
                     RestorePreviewOverlayIfChecked();
                 }));
+                // 填充状态下只保留 ESC 的响应，不再把 ESC 透传给其他窗口
+                return (IntPtr)1;
             }
+
+            if (operationActive)
+            {
+                // 填充/检测/补涂过程中，除 ESC 外的所有按键均被屏蔽
+                Logger.Debug($"[hook] key {vkCode} suppressed during active operation");
+                return (IntPtr)1;
+            }
+
             // 鐩墠S閿嚜鍔ㄦ粦鍔ㄦ娴嬬簿搴︽瀬鍏朵笉鍑嗙‘锛屾殏鏃跺叧闂?
-            // else if (vkCode == NativeMethods.VK_S)
+            // if (vkCode == NativeMethods.VK_S)
             // {
             //     BeginInvoke((Action)(() =>
             //     {
@@ -1659,7 +1701,7 @@ public partial class Form1 : Form
             //         Logger.Debug($"[toggle] enabled={enabled}");
             //     }));
             // }
-            else if (vkCode == NativeMethods.VK_A)
+            if (vkCode == NativeMethods.VK_A && !injected)
             {
                 Logger.Debug($"[hook] A pressed, recording color");
                 BeginInvoke((Action)(() =>
@@ -1817,6 +1859,17 @@ public partial class Form1 : Form
         }
     }
 
+    private void CancelIsland()
+    {
+        var cts = Interlocked.Exchange(ref _islandCts, null);
+        if (cts != null)
+        {
+            Logger.Debug("[cancel] CancelIsland: cancelling and disposing islandCts");
+            cts.Cancel();
+            cts.Dispose();
+        }
+    }
+
     private void BeginAutoFillAll()
     {
         Logger.Debug("[ui] BeginAutoFillAll clicked");
@@ -1836,7 +1889,7 @@ public partial class Form1 : Form
         if (!snapshot.recordedRange.HasValue)
         {
             Logger.Debug("[auto_all] no range, showing message box");
-            MessageBox.Show("请框选范围", "提示");
+            IslandConfirmDialog.Show(this, "请框选范围", "提示", false);
             return;
         }
 
@@ -1844,7 +1897,7 @@ public partial class Form1 : Form
         if (htmlColors.Count == 0)
         {
              Logger.Debug("[auto_all] no predefined colors found");
-             MessageBox.Show("未找到颜色定义", "错误");
+             IslandConfirmDialog.Show(this, "未找到颜色定义", "错误", false);
              return;
         }
         Logger.Debug($"[auto_all] found {htmlColors.Count} colors, range={snapshot.recordedRange.Value}");
@@ -1856,9 +1909,7 @@ public partial class Form1 : Form
             textCores.Text = workers.ToString();
         }
 
-        btnAutoFillAll.Enabled = false;
-        btnFill.Enabled = false;
-        btnRange.Enabled = false;
+        SetOperationControlsEnabled(false);
         HidePreviewOverlay();
 
         CancelScan();
@@ -1910,9 +1961,7 @@ public partial class Form1 : Form
                 BeginInvoke((Action)(() =>
                 {
                     _autoAllProgressActive = false;
-                    btnAutoFillAll.Enabled = true;
-                    btnFill.Enabled = true;
-                    btnRange.Enabled = true;
+                    SetOperationControlsEnabled(true);
                     RestorePreviewOverlayIfChecked();
                     var cts = Interlocked.Exchange(ref _autoAllCts, null);
                     cts?.Dispose();
@@ -2065,7 +2114,7 @@ public partial class Form1 : Form
         var targets = GetPredefinedColors();
         if (targets.Count == 0)
         {
-            BeginInvoke((Action)(() => MessageBox.Show("未找到颜色定义", "错误")));
+            BeginInvoke((Action)(() => IslandConfirmDialog.Show(this, "未找到颜色定义", "错误", false)));
             return;
         }
 
@@ -2184,7 +2233,16 @@ public partial class Form1 : Form
         if (!snapshot.recordedRange.HasValue)
         {
             Logger.Debug("[island] no range, showing message box");
-            MessageBox.Show("请框选范围", "提示");
+            IslandConfirmDialog.Show(this, "请框选范围", "提示", false);
+            return;
+        }
+
+        var recommendResult = IslandConfirmDialog.Show(this,
+            "强烈建议在已经填涂好的情况下进行遗漏检测功能。\n\n是否继续运行遗漏检测？",
+            "遗漏检测", true);
+        if (recommendResult != DialogResult.Yes)
+        {
+            Logger.Debug("[island] user declined recommendation");
             return;
         }
 
@@ -2200,10 +2258,7 @@ public partial class Form1 : Form
             textCores.Text = workers.ToString();
         }
 
-        btnRunIslandDetect.Enabled = false;
-        btnFill.Enabled = false;
-        btnAutoFillAll.Enabled = false;
-        btnRange.Enabled = false;
+        SetOperationControlsEnabled(false);
         HidePreviewOverlay();
 
         CancelScan();
@@ -2227,10 +2282,7 @@ public partial class Form1 : Form
             {
                 BeginInvoke((Action)(() =>
                 {
-                    btnRunIslandDetect.Enabled = true;
-                    btnFill.Enabled = true;
-                    btnAutoFillAll.Enabled = true;
-                    btnRange.Enabled = true;
+                    SetOperationControlsEnabled(true);
                     RestorePreviewOverlayIfChecked();
                     var cts = Interlocked.Exchange(ref _islandCts, null);
                     cts?.Dispose();
@@ -2697,10 +2749,10 @@ public partial class Form1 : Form
                 btnRunIslandDetect.Location = new Point(12, 652);
                 btnRunIslandDetect.Size = new Size(160, 26);
                 btnRunIslandDetect.Visible = true;
-                btnToggleLayout.Location = new Point(178, 678);
+                btnToggleLayout.Location = new Point(178, 652);
                 btnToggleLayout.Size = new Size(145, 26);
-                labelCurrentVersion.Location = new Point(12, 712);
-                linkGithubOrUpdate.Location = new Point(12, 734);
+                labelCurrentVersion.Location = new Point(12, 690);
+                linkGithubOrUpdate.Location = new Point(12, 712);
                 btnToggleLayout.Text = "切换为精简布局";
             }
             else

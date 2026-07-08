@@ -14,6 +14,11 @@ namespace WplaceColorWatch
         public const int VK_OEM_3 = 0xC0;
         public const int VK_I = 0x49;
 
+        // KBDLLHOOKSTRUCT.flags 中的注入标志：表示该键盘事件由 SendInput 注入（而非真实物理按键）。
+        // LL 低级键盘钩子会收到 SendInput 注入的事件，必须据此放行，否则会屏蔽本程序自己发出的按键。
+        public const int LLKHF_INJECTED = 0x00000010;
+        public const int LLKHF_LOWER_IL_INJECTED = 0x00000002;
+
         public const int INPUT_MOUSE = 0;
         public const int INPUT_KEYBOARD = 1;
         public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
