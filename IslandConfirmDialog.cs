@@ -11,6 +11,8 @@ namespace WplaceColorWatch
     public sealed class IslandConfirmDialog : Form
     {
         private readonly bool _showYesNo;
+        private readonly string? _dontShowAgainText;
+        private CheckBox? _dontShowAgainCheckBox;
 
         /// <summary>
         /// 显示对话框并阻塞至用户关闭。
@@ -21,13 +23,30 @@ namespace WplaceColorWatch
         /// <param name="showYesNo">true=是/否 按钮；false=仅确定按钮</param>
         public static DialogResult Show(Form owner, string message, string title, bool showYesNo)
         {
-            using var dlg = new IslandConfirmDialog(owner, message, title, showYesNo);
+            using var dlg = new IslandConfirmDialog(owner, message, title, showYesNo, null);
             return dlg.ShowDialog(owner);
         }
 
-        private IslandConfirmDialog(Form owner, string message, string title, bool showYesNo)
+        /// <summary>
+        /// 显示带“不再提示”勾选框的是/否对话框并阻塞至用户关闭。
+        /// </summary>
+        /// <param name="owner">所属主窗体</param>
+        /// <param name="message">正文</param>
+        /// <param name="title">标题</param>
+        /// <param name="dontShowAgainText">勾选框文案（非空时才显示该勾选框）</param>
+        /// <returns>对话框结果 + 勾选框是否被勾选</returns>
+        public static (DialogResult result, bool dontShowAgain) ShowWithDontShowAgain(
+            Form owner, string message, string title, string dontShowAgainText)
+        {
+            using var dlg = new IslandConfirmDialog(owner, message, title, true, dontShowAgainText);
+            var r = dlg.ShowDialog(owner);
+            return (r, dlg._dontShowAgainCheckBox?.Checked ?? false);
+        }
+
+        private IslandConfirmDialog(Form owner, string message, string title, bool showYesNo, string? dontShowAgainText)
         {
             _showYesNo = showYesNo;
+            _dontShowAgainText = dontShowAgainText;
 
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
@@ -66,8 +85,23 @@ namespace WplaceColorWatch
                 TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height;
             lblMessage.Size = new Size(messageWidth, textHeight);
 
-            int messageBottom = lblMessage.Bottom;
-            int buttonY = messageBottom + 22;
+            int cursorY = lblMessage.Bottom;
+
+            // “不再提示”勾选框（可选）
+            if (!string.IsNullOrEmpty(_dontShowAgainText))
+            {
+                _dontShowAgainCheckBox = new CheckBox
+                {
+                    Text = _dontShowAgainText,
+                    AutoSize = true,
+                    Location = new Point(marginX, cursorY + 10),
+                    UseVisualStyleBackColor = true,
+                };
+                Controls.Add(_dontShowAgainCheckBox);
+                cursorY = _dontShowAgainCheckBox.Bottom;
+            }
+
+            int buttonY = cursorY + 18;
             int formHeight = buttonY + 46;
 
             ClientSize = new Size(400, formHeight);

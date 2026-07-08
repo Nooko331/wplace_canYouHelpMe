@@ -32,6 +32,7 @@ public partial class Form1 : Form
 
     private readonly Options _options;
     private readonly uint _showMainWindowMessage;
+    private UserSettings _settings = new();
     private readonly RuntimeState _state = new();
     private IntPtr _hookId = IntPtr.Zero;
     private NativeMethods.LowLevelKeyboardProc? _hookProc;
@@ -136,6 +137,9 @@ public partial class Form1 : Form
         btnRunIslandDetect.UseVisualStyleBackColor = true;
         btnRunIslandDetect.Click += (_, _) => BeginIslandDetection();
         Controls.Add(btnRunIslandDetect);
+
+        // 加载持久化的用户设置并应用到 UI（需在控件创建之后）
+        LoadUserSettings();
 
         ApplyLayout(_layoutMode);
 
@@ -1271,6 +1275,61 @@ public partial class Form1 : Form
         return DefaultScanStep;
     }
 
+    /// <summary>
+    /// 无副作用的整数解析：仅当文本为合法正整数时返回该值，否则返回 fallback。
+    /// 用于保存设置时读取控件值，避免触发 ReadScanWorkers/ReadScanStep 的弹窗与文本回写副作用。
+    /// </summary>
+    private static int SafeParseInt(string? text, int fallback)
+    {
+        return int.TryParse(text, out var value) && value > 0 ? value : fallback;
+    }
+
+    /// <summary>
+    /// 加载持久化的用户设置并应用到 UI 与 _options。需在控件创建之后调用。
+    /// </summary>
+    private void LoadUserSettings()
+    {
+        _settings = UserSettings.Load();
+        _options.ScanStep = _settings.ScanStep;
+        // ScanWorkers 按 CPU 核数钳制，与 ReadScanWorkers 的上限一致，避免换机器后首次填充报“输入无效”
+        int maxWorkers = Math.Max(1, Environment.ProcessorCount - 1);
+        _options.ScanWorkers = Math.Max(1, Math.Min(_settings.ScanWorkers, maxWorkers));
+        ScanStep.Text = _settings.ScanStep.ToString();
+        textCores.Text = _options.ScanWorkers.ToString();
+
+        // 启动时尚无 recordedRange，ToggleRangePreview->RefreshRangePreview 会安全早退
+        checkShowRange.Checked = _settings.ShowRange;
+
+        // 速度模式：设为当前已选值不触发 CheckedChanged，切换到另一项才会触发并应用对应预设
+        if (_settings.SpeedPreset == UserSettings.SpeedExtreme)
+        {
+            radioSpeedExtreme.Checked = true;
+        }
+        else
+        {
+            radioSpeedBalanced.Checked = true;
+        }
+        Logger.Debug($"[settings] loaded step={_options.ScanStep} workers(applied)={_options.ScanWorkers} showRange={_settings.ShowRange} speed={_settings.SpeedPreset} skipIslandRec={_settings.SkipIslandRecommendation}");
+    }
+
+    /// <summary>
+    /// 将当前 UI 状态写入 _settings 并持久化。在窗体关闭时调用。
+    /// </summary>
+    private void SaveUserSettings()
+    {
+        if (_settings == null)
+        {
+            return;
+        }
+        _settings.ScanWorkers = SafeParseInt(textCores.Text, _options.ScanWorkers);
+        _settings.ScanStep = SafeParseInt(ScanStep.Text, _options.ScanStep);
+        _settings.ShowRange = checkShowRange.Checked;
+        _settings.SpeedPreset = radioSpeedExtreme.Checked ? UserSettings.SpeedExtreme : UserSettings.SpeedBalanced;
+        // SkipIslandRecommendation 已在用户勾选“不再提示”时写入
+        _settings.Save();
+        Logger.Debug($"[settings] saved step={_settings.ScanStep} workers={_settings.ScanWorkers} showRange={_settings.ShowRange} speed={_settings.SpeedPreset} skipIslandRec={_settings.SkipIslandRecommendation}");
+    }
+
     private void ShowInvalidInputMessage()
     {
         IslandConfirmDialog.Show(this, "输入内容无效。", "提示", false);
@@ -1642,6 +1701,8 @@ public partial class Form1 : Form
 
     private void CleanupResources()
     {
+        // 关闭时持久化用户设置（吞掉异常，绝不影响关闭流程）
+        SaveUserSettings();
         _startupActivationTimer?.Stop();
         _startupActivationTimer?.Dispose();
         _startupActivationTimer = null;
@@ -2190,7 +2251,7 @@ public partial class Form1 : Form
         BeginInvoke((Action)(() =>
         {
             var r = IslandConfirmDialog.Show(this,
-                $"检测到 {totalMissed} 个遗漏点（{islands.Count} 处孤岛）。\n请确认这些点是否需要补涂，确认后将自动补涂。",
+                $"检测到 {islands.Count} 处孤岛（{totalMissed} 个像素点）。\n请确认这些点是否需要补涂，确认后将自动补涂。",
                 "遗漏检测", true);
             confirm = r == DialogResult.Yes;
             done.Set();
@@ -2237,14 +2298,24 @@ public partial class Form1 : Form
             return;
         }
 
-        var recommendResult = IslandConfirmDialog.Show(this,
-            "强烈建议在已经填涂好的情况下进行遗漏检测功能。\n\n是否继续运行遗漏检测？",
-            "遗漏检测", true);
-        if (recommendResult != DialogResult.Yes)
+        if (!_settings.SkipIslandRecommendation)
         {
-            Logger.Debug("[island] user declined recommendation");
-            return;
+            var (recommendResult, dontShow) = IslandConfirmDialog.ShowWithDontShowAgain(
+                this,
+                "强烈建议在已经填涂好的情况下进行遗漏检测功能。\n\n是否继续运行遗漏检测？",
+                "遗漏检测",
+                "不再提示");
+            if (dontShow)
+            {
+                _settings.SkipIslandRecommendation = true;
+            }
+            if (recommendResult != DialogResult.Yes)
+            {
+                Logger.Debug("[island] user declined recommendation");
+                return;
+            }
         }
+        // 已设“不再提示”时直接继续（视作继续），不再弹框
 
         _options.ScanStep = ReadScanStep();
         if (ScanStep.Text != _options.ScanStep.ToString())
