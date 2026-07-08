@@ -41,8 +41,6 @@
         public int ClusterFillStepDelayMs { get; set; } = 0;
 
         // ======== 遗漏点孤岛检测参数 ========
-        // 是否在自动/全自动填涂完成后自动运行遗漏点检测
-        public bool IslandDetectEnabled { get; set; }
         // 小簇绝对上限：簇点数 ≤ 此值才作为孤岛候选（兜底，防极大簇）。应介于“遗漏点数”与“已处理点数”之间
         public int IslandMaxSize { get; set; } = 5;
         // 护城河阈值：小簇紧邻外环中“非匹配点”占比需 ≥ 此阈值（0~1）

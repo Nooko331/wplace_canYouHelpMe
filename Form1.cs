@@ -50,7 +50,6 @@ public partial class Form1 : Form
     private readonly Panel _compactDivider2 = new();
     private readonly RadioButton radioSpeedBalanced = new();
     private readonly RadioButton radioSpeedExtreme = new();
-    private readonly CheckBox checkIslandDetect = new();
     private readonly Button btnRunIslandDetect = new();
     private PreviewOverlayForm? _previewOverlay;
     private List<Point> _overlayFillPoints = new();
@@ -132,20 +131,10 @@ public partial class Form1 : Form
         Controls.Add(radioSpeedExtreme);
         ApplySpeedPreset(SpeedPreset.Balanced);
 
-        // 遗漏检测控件
-        checkIslandDetect.Text = "启用遗漏检测";
-        checkIslandDetect.AutoSize = true;
-        checkIslandDetect.Checked = _options.IslandDetectEnabled;
-        checkIslandDetect.UseVisualStyleBackColor = true;
-        checkIslandDetect.CheckedChanged += (_, _) =>
-        {
-            _options.IslandDetectEnabled = checkIslandDetect.Checked;
-            Logger.Debug($"[ui] IslandDetectEnabled={_options.IslandDetectEnabled}");
-        };
+        // 遗漏检测控件（仅手动按钮；自动填涂后不再自动触发）
         btnRunIslandDetect.Text = "运行遗漏检测";
         btnRunIslandDetect.UseVisualStyleBackColor = true;
         btnRunIslandDetect.Click += (_, _) => BeginIslandDetection();
-        Controls.Add(checkIslandDetect);
         Controls.Add(btnRunIslandDetect);
 
         ApplyLayout(_layoutMode);
@@ -921,7 +910,6 @@ public partial class Form1 : Form
         Logger.Debug("[auto_fill] scanning...");
         Task.Run(() =>
         {
-            bool fillSucceeded = false;
             try
             {
                 var points = ScanMatchingPoints(snapshot.recordedRange.Value, fillTargets, token);
@@ -947,10 +935,6 @@ public partial class Form1 : Form
                     Logger.Debug($"[auto_fill] executing {orderedPoints.Count} fill points...");
                     ExecuteAutoFillPoints(orderedPoints, false, token);
                     Logger.Debug($"[auto_fill] ExecuteAutoFillPoints completed");
-                    if (!token.IsCancellationRequested)
-                    {
-                        fillSucceeded = true;
-                    }
                 }
                 else
                 {
@@ -977,11 +961,6 @@ public partial class Form1 : Form
                     var cts = Interlocked.Exchange(ref _scanCts, null);
                     cts?.Dispose();
                     Logger.Debug("[auto_fill] task cleanup done");
-                    if (fillSucceeded && _options.IslandDetectEnabled)
-                    {
-                        Logger.Debug("[auto_fill] island detect enabled, triggering");
-                        BeginIslandDetection();
-                    }
                 }));
             }
         }, token);
@@ -1894,7 +1873,6 @@ public partial class Form1 : Form
 
         Task.Run(() =>
         {
-            bool autoFillSucceeded = false;
             try
             {
                 Logger.Debug("[auto_all] scanning...");
@@ -1921,10 +1899,6 @@ public partial class Form1 : Form
                 Logger.Debug($"[auto_all] executing fill for {totalPoints} points...");
                 ExecuteAutoFillAll(groups, htmlColors, token);
                 Logger.Debug("[auto_all] ExecuteAutoFillAll completed");
-                if (!token.IsCancellationRequested)
-                {
-                    autoFillSucceeded = true;
-                }
             }
             catch (Exception ex)
             {
@@ -1943,11 +1917,6 @@ public partial class Form1 : Form
                     var cts = Interlocked.Exchange(ref _autoAllCts, null);
                     cts?.Dispose();
                     Logger.Debug("[auto_all] task cleanup done");
-                    if (autoFillSucceeded && _options.IslandDetectEnabled)
-                    {
-                        Logger.Debug("[auto_all] island detect enabled, triggering");
-                        BeginIslandDetection();
-                    }
                 }));
             }
         }, token);
@@ -2134,14 +2103,14 @@ public partial class Form1 : Form
             {
                 Logger.Debug("[island] no missed points found");
                 var msg = "未检测到遗漏点。\n\n诊断信息：\n" + diag;
-                BeginInvoke((Action)(() => MessageBox.Show(msg, "遗漏检测", MessageBoxButtons.OK, MessageBoxIcon.Information)));
+                BeginInvoke((Action)(() => IslandConfirmDialog.Show(this, msg, "遗漏检测", false)));
                 return;
             }
         }
         else if (islands.Count == 0 || totalMissed == 0)
         {
             Logger.Debug("[island] no missed points found");
-            BeginInvoke((Action)(() => MessageBox.Show("未检测到遗漏点", "遗漏检测")));
+            BeginInvoke((Action)(() => IslandConfirmDialog.Show(this, "未检测到遗漏点", "遗漏检测", false)));
             return;
         }
 
@@ -2166,14 +2135,15 @@ public partial class Form1 : Form
         // 4) 重新标注为待处理点（覆盖层显示），让用户能看着遗漏点确认
         BeginInvoke((Action)(() => SetOverlayFillPoints(orderedMissed, true)));
 
-        // 5) 弹窗确认（必须在 UI 线程）
+        // 5) 弹窗确认（必须在 UI 线程；IslandConfirmDialog.ShowDialog 会阻塞至用户选择）
         bool confirm = false;
         using var done = new ManualResetEventSlim(false);
         BeginInvoke((Action)(() =>
         {
-            confirm = MessageBox.Show(
+            var r = IslandConfirmDialog.Show(this,
                 $"检测到 {totalMissed} 个遗漏点（{islands.Count} 处孤岛）。\n请确认这些点是否需要补涂，确认后将自动补涂。",
-                "遗漏检测", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+                "遗漏检测", true);
+            confirm = r == DialogResult.Yes;
             done.Set();
         }));
         done.Wait(token);
@@ -2723,11 +2693,8 @@ public partial class Form1 : Form
                 labelAutoAllValue.Location = new Point(160, 590);
                 progressAutoAll.Location = new Point(12, 615);
                 progressAutoAll.Size = new Size(351, 28);
-                checkIslandDetect.Text = "启用遗漏检测";
-                checkIslandDetect.Location = new Point(12, 652);
-                checkIslandDetect.Visible = true;
                 btnRunIslandDetect.Text = "运行遗漏检测";
-                btnRunIslandDetect.Location = new Point(12, 678);
+                btnRunIslandDetect.Location = new Point(12, 652);
                 btnRunIslandDetect.Size = new Size(160, 26);
                 btnRunIslandDetect.Visible = true;
                 btnToggleLayout.Location = new Point(178, 678);
@@ -2801,12 +2768,9 @@ public partial class Form1 : Form
                 radioSpeedExtreme.Location = new Point(492, 108);
                 radioSpeedBalanced.Visible = true;
                 radioSpeedExtreme.Visible = true;
-                checkIslandDetect.Text = "启用遗漏检测";
-                checkIslandDetect.Location = new Point(248, 152);
-                checkIslandDetect.Visible = true;
-                btnRunIslandDetect.Text = "运行遗漏检测";
-                btnRunIslandDetect.Location = new Point(430, 138);
-                btnRunIslandDetect.Size = new Size(76, 26);
+                btnRunIslandDetect.Text = "遗漏";
+                btnRunIslandDetect.Location = new Point(574, 20); // 全自动(494,20,w76)右侧
+                btnRunIslandDetect.Size = new Size(58, 26);
                 btnRunIslandDetect.Visible = true;
 
                 labelAutoAll.Text = "总进度";
