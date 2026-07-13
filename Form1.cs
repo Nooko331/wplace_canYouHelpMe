@@ -557,6 +557,27 @@ public partial class Form1 : Form
         return bgr.R == Color.White.R && bgr.G == Color.White.G && bgr.B == Color.White.B;
     }
 
+    /// <summary>
+    /// 判断取色样本是否命中本次自动化运行中已经取过的颜色（容差 = ColorTol）。
+    /// 用于多色全自动填涂时跳过“取到旧笔色”的异常点，避免用旧笔色覆盖当前色组。
+    /// </summary>
+    private bool IsColorAlreadyPicked(BgrColor sample, HashSet<BgrColor> pickedColors)
+    {
+        if (pickedColors.Count == 0)
+        {
+            return false;
+        }
+        int tol = _options.ColorTol;
+        foreach (var c in pickedColors)
+        {
+            if (sample.MaxDiff(c) <= tol)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static string FormatBgrs(List<BgrColor> bgrs)
     {
         if (bgrs.Count == 0)
@@ -2538,6 +2559,10 @@ public partial class Form1 : Form
             .Concat(order.Where(color => !IsWhite(color)))
             .ToList();
         bool whiteColorCompleted = false;
+        // 本次自动化运行中已经成功取色（并用作笔色）的预设色集合。
+        // 取色时若读到的底色命中此集合，说明该点已是之前涂过的颜色（已涂区域/串色），
+        // 跳过本次填涂并移至下一点重新取色，直至取到未用过的颜色，避免用旧笔色覆盖当前色组。
+        var pickedColors = new HashSet<BgrColor>();
 
         // 构建覆盖层点列表：按聚类后的实际处理顺序排列，使覆盖层显示与填色进度一致
         var allOrderedPoints = new List<Point>();
@@ -2618,8 +2643,24 @@ public partial class Form1 : Form
                     continue;
                 }
 
+                // 取色异常：读到的底色命中本次运行已取过的颜色（多为已涂区域/串色），并非当前目标色。
+                // 跳过本次填涂，移至下一点重新取色，以此循环，直至取到未用过的颜色。
+                // 注意：白色样本已由上面的 white-skip 分支提前处理（常见情况，仅记 Debug，避免污染错误日志），
+                //       此处只命中非白色的“旧笔色”，属于真正需要记录的取色异常。
+                if (IsColorAlreadyPicked(recorded.clear, pickedColors))
+                {
+                    Logger.Error($"[auto_all] 取色异常：目标色 {FormatBgr(color)} 在点 ({first.X},{first.Y}) 取到已用过的颜色 {FormatBgr(recorded.clear)}，跳过填涂并移至下一点重新取色");
+                    processed++;
+                    UpdateAutoAllOverlay(processed);
+                    UpdateAutoAllProgress(processed, total);
+                    startIndex++;
+                    continue;
+                }
+
                 Thread.Sleep(_options.ColorPickToFillDelayMs);
                 SendSpace();
+                // 取色并涂色成功：将当前目标色记入已取色集合，供后续色组比对
+                pickedColors.Add(color);
                 processed++;
                 UpdateAutoAllOverlay(processed);
                 UpdateAutoAllProgress(processed, total);
@@ -2630,7 +2671,8 @@ public partial class Form1 : Form
 
             if (!firstPointHandled)
             {
-                Logger.Debug($"[exec_all] color [{color.R},{color.G},{color.B}] no first point handled, skipping remaining");
+                // 整个色组的所有点都取到已用过的颜色（或白色），未找到可用作取色的点
+                Logger.Error($"[auto_all] 取色异常：颜色 {FormatBgr(color)} 的 {orderedPoints.Count} 个点均取到已用过的颜色，无法取到目标色，跳过该色组");
                 if (currentColorIsWhite)
                 {
                     whiteColorCompleted = true;
