@@ -36,6 +36,9 @@ public partial class Form1 : Form
     private readonly RuntimeState _state = new();
     private IntPtr _hookId = IntPtr.Zero;
     private NativeMethods.LowLevelKeyboardProc? _hookProc;
+    // 是否正在划取检测范围（SelectionForm 模态打开中）。为 true 时，ESC 不被全局钩子吞掉，
+    // 放行给 SelectionForm 处理，使其能立即退出。
+    private bool _selectingRange;
     private CancellationTokenSource? _scanCts;
     private CancellationTokenSource? _autoAllCts;
     private CancellationTokenSource? _islandCts;
@@ -643,7 +646,15 @@ public partial class Form1 : Form
 
         var screen = Screen.FromPoint(Cursor.Position);
         using var sel = new SelectionForm(screen.Bounds, _options.ScanStep);
-        sel.ShowDialog(this);
+        _selectingRange = true;
+        try
+        {
+            sel.ShowDialog(this);
+        }
+        finally
+        {
+            _selectingRange = false;
+        }
         Logger.Debug($"[range] SelectionForm closed selected={sel.SelectedRect.HasValue}");
         if (sel.SelectedRect.HasValue)
         {
@@ -1763,6 +1774,12 @@ public partial class Form1 : Form
 
             if (vkCode == NativeMethods.VK_ESCAPE && !injected)
             {
+                // 正在划取检测范围（SelectionForm 模态打开）时放行 ESC，
+                // 让 SelectionForm.OnKeyDown 处理以立即退出；不在此吞掉。
+                if (_selectingRange)
+                {
+                    return NativeMethods.CallNextHookEx(_hookId, nCode, wParam, lParam);
+                }
                 Logger.Debug($"[hook] ESC pressed, stopping all");
                 BeginInvoke((Action)(() =>
                 {

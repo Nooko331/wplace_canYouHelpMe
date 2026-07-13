@@ -52,6 +52,8 @@ namespace WplaceColorWatch
             Opacity = 1;
             Cursor = Cursors.Cross;
             DoubleBuffered = true;
+            // 窗体优先接收键盘事件，保证 ESC 在任意阶段（拖拽矩形 / 多边形画线 / 待定）都能立即触发退出
+            KeyPreview = true;
         }
 
         protected override void Dispose(bool disposing)
@@ -66,12 +68,20 @@ namespace WplaceColorWatch
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
-            // 多边形模式：右键撤销上一个顶点，可重新点击确定范围
+            // 多边形模式：右键撤销上一个顶点。撤销后若已无顶点，则退出划取区域范围功能。
             if (e.Button == MouseButtons.Right && _polygonMode)
             {
                 if (_polygon.Count > 0)
                 {
                     _polygon.RemoveAt(_polygon.Count - 1);
+                    if (_polygon.Count == 0)
+                    {
+                        // 屏幕上已无顶点（如：放下首点后即右键撤销），退出划取区域范围功能
+                        SelectedRect = null;
+                        SelectedPolygon = null;
+                        Close();
+                        return;
+                    }
                     _nearClose = _polygon.Count >= 2 && DistanceSq(_hover, _polygon[0]) <= CloseSnapPx * CloseSnapPx;
                     Invalidate();
                 }
@@ -165,6 +175,7 @@ namespace WplaceColorWatch
         protected override void OnKeyDown(KeyEventArgs e)
         {
             base.OnKeyDown(e);
+            // ESC：无论用哪种方式（矩形拖拽 / 多边形画线 / 待定阶段）都立即退出划取区域范围功能
             if (e.KeyCode == Keys.Escape)
             {
                 SelectedRect = null;
