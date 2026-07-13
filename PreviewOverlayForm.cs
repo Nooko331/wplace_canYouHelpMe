@@ -13,6 +13,8 @@ namespace WplaceColorWatch
 
         private Rectangle _range;
         private List<Point> _points = new();
+        // 正交多边形轮廓（屏幕坐标，闭合环）；非 null 时画多边形外框替代矩形外框。
+        private List<Point>? _polygon;
         private int _startIndex;
 
         public PreviewOverlayForm()
@@ -40,10 +42,11 @@ namespace WplaceColorWatch
             }
         }
 
-        public void SetData(Rectangle range, List<Point> points, int startIndex = 0)
+        public void SetData(Rectangle range, List<Point> points, int startIndex = 0, List<Point>? polygon = null)
         {
             _range = range;
             _points = new List<Point>(points);
+            _polygon = polygon == null ? null : new List<Point>(polygon);
             _startIndex = Math.Max(0, Math.Min(startIndex, _points.Count));
             var screen = Screen.FromRectangle(range);
             Bounds = screen.Bounds;
@@ -61,9 +64,10 @@ namespace WplaceColorWatch
             Refresh();
         }
 
-        public void SetRange(Rectangle range)
+        public void SetRange(Rectangle range, List<Point>? polygon = null)
         {
             _range = range;
+            _polygon = polygon == null ? null : new List<Point>(polygon);
             var screen = Screen.FromRectangle(range);
             Bounds = screen.Bounds;
             Refresh();
@@ -79,8 +83,22 @@ namespace WplaceColorWatch
 
             using var outerPen = new Pen(SelectionOuterColor, 3);
             using var innerPen = new Pen(SelectionAccentColor, 1);
-            e.Graphics.DrawRectangle(outerPen, _range);
-            e.Graphics.DrawRectangle(innerPen, _range);
+            if (_polygon != null && _polygon.Count >= 2)
+            {
+                var pts = new Point[_polygon.Count + 1];
+                for (int i = 0; i < _polygon.Count; i++)
+                {
+                    pts[i] = _polygon[i];
+                }
+                pts[_polygon.Count] = _polygon[0]; // 闭合回起点
+                e.Graphics.DrawLines(outerPen, pts);
+                e.Graphics.DrawLines(innerPen, pts);
+            }
+            else
+            {
+                e.Graphics.DrawRectangle(outerPen, _range);
+                e.Graphics.DrawRectangle(innerPen, _range);
+            }
 
             if (_points.Count == 0 || _startIndex >= _points.Count)
             {

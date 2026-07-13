@@ -15,6 +15,9 @@ public sealed class RuntimeState
     public List<BgrColor> RecordedBgrsRaw { get; private set; } = new();
     public Point? RecordedPos { get; private set; }
     public Rectangle? RecordedRange { get; private set; }
+    // 正交多边形顶点（屏幕坐标，闭合环，含自动拐角）；null 表示矩形模式，下游直接用 RecordedRange。
+    // 非 null 时 RecordedRange 为该多边形的外接矩形，扫描/填涂/预览只在多边形内部进行。
+    public List<Point>? RecordedPolygon { get; private set; }
     public bool ActionEnabled { get; private set; }
     public bool AutoFillEnabled { get; private set; }
     public bool AutoFillPrimed { get; private set; }
@@ -49,12 +52,21 @@ public sealed class RuntimeState
         }
     }
 
-    public void SetRange(Rectangle rect)
+    public void SetRange(Rectangle rect, List<Point>? polygon = null)
     {
         lock (_lock)
         {
             RecordedRange = rect;
-            Logger.Debug($"[state] SetRange rect=({rect.X},{rect.Y},{rect.Width},{rect.Height})");
+            RecordedPolygon = polygon;
+            Logger.Debug($"[state] SetRange rect=({rect.X},{rect.Y},{rect.Width},{rect.Height}) polygon={(polygon == null ? "null" : polygon.Count.ToString())}");
+        }
+    }
+
+    public List<Point>? GetPolygon()
+    {
+        lock (_lock)
+        {
+            return RecordedPolygon == null ? null : new List<Point>(RecordedPolygon);
         }
     }
 

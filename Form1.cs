@@ -647,7 +647,7 @@ public partial class Form1 : Form
         Logger.Debug($"[range] SelectionForm closed selected={sel.SelectedRect.HasValue}");
         if (sel.SelectedRect.HasValue)
         {
-            _state.SetRange(sel.SelectedRect.Value);
+            _state.SetRange(sel.SelectedRect.Value, sel.SelectedPolygon);
             Logger.Debug($"[range] done rect={sel.SelectedRect.Value}");
             if (wasChecked)
             {
@@ -676,7 +676,8 @@ public partial class Form1 : Form
             return;
         }
         var rect = snapshot.recordedRange.Value;
-        var points = ScanPattern.GetGridPoints(rect, _options.ScanStep);
+        var poly = _state.GetPolygon();
+        var points = ScanPattern.GetGridPoints(rect, _options.ScanStep, poly);
         _state.SetPreviewPoints(points);
         if (_previewOverlay == null || _previewOverlay.IsDisposed)
         {
@@ -686,7 +687,7 @@ public partial class Form1 : Form
         _overlayFillMode = false;
         _overlayFillPoints = points;
         _overlayFillStartIndex = 0;
-        _previewOverlay.SetData(rect, points, 0);
+        _previewOverlay.SetData(rect, points, 0, poly);
         if (!_previewOverlay.Visible)
         {
             _previewOverlay.Show(this);
@@ -773,6 +774,7 @@ public partial class Form1 : Form
         }
 
         var range = snapshot.recordedRange.Value;
+        var poly = _state.GetPolygon();
 
         // 半自动填充：显示剩余填充点
         if (!_overlayFillIsFullAuto && snapshot.autoFillEnabled && snapshot.autoFillReady)
@@ -785,7 +787,7 @@ public partial class Form1 : Form
                 _overlayFillIsFullAuto = false;
                 _overlayFillPoints = fillPoints;
                 _overlayFillStartIndex = snapshot.autoFillIndex;
-                EnsureOverlay().SetData(range, fillPoints, snapshot.autoFillIndex);
+                EnsureOverlay().SetData(range, fillPoints, snapshot.autoFillIndex, poly);
             }
             else if (_overlayFillStartIndex != snapshot.autoFillIndex)
             {
@@ -815,12 +817,12 @@ public partial class Form1 : Form
                 Logger.Debug("[overlay] UpdateOverlayFromState: switching from fill to preview mode");
                 _overlayFillMode = false;
                 _overlayFillStartIndex = 0;
-                EnsureOverlay().SetData(range, snapshot.previewPoints, 0);
+                EnsureOverlay().SetData(range, snapshot.previewPoints, 0, poly);
             }
             else if (_previewOverlay == null || _previewOverlay.IsDisposed)
             {
                 Logger.Debug("[overlay] UpdateOverlayFromState: creating overlay for preview mode");
-                EnsureOverlay().SetData(range, snapshot.previewPoints, 0);
+                EnsureOverlay().SetData(range, snapshot.previewPoints, 0, poly);
             }
             else if (!_previewOverlay.Visible)
             {
@@ -853,7 +855,7 @@ public partial class Form1 : Form
         _overlayFillIsFullAuto = fullAuto;
         _overlayFillPoints = new List<Point>(points);
         _overlayFillStartIndex = 0;
-        EnsureOverlay().SetData(snapshot.recordedRange.Value, _overlayFillPoints, 0);
+        EnsureOverlay().SetData(snapshot.recordedRange.Value, _overlayFillPoints, 0, _state.GetPolygon());
         Logger.Debug($"[overlay] SetOverlayFillPoints: overlay setup complete");
     }
 
@@ -958,7 +960,7 @@ public partial class Form1 : Form
         {
             try
             {
-                var points = ScanMatchingPoints(snapshot.recordedRange.Value, fillTargets, token);
+                var points = ScanMatchingPoints(snapshot.recordedRange.Value, fillTargets, token, _state.GetPolygon());
                 Logger.Debug($"[auto_fill] scan returned points={points.Count} cancelled={token.IsCancellationRequested}");
                 if (token.IsCancellationRequested)
                 {
@@ -1012,8 +1014,9 @@ public partial class Form1 : Form
         }, token);
     }
 
-    private List<Point> ScanMatchingPoints(Rectangle rect, List<BgrColor> bgrs, CancellationToken token)
+    private List<Point> ScanMatchingPoints(Rectangle rect, List<BgrColor> bgrs, CancellationToken token, List<Point>? polygon = null)
     {
+        var poly = polygon != null && polygon.Count >= 3 ? new OrthogonalPolygon(polygon) : null;
         var points = new List<Point>();
         var whitePoints = new List<Point>();
         int minDiff = int.MaxValue;
@@ -1136,6 +1139,11 @@ public partial class Form1 : Form
                         Logger.Debug("[scan] canceled");
                         return points;
                     }
+                    if (poly != null && !poly.Contains(rect.Left + x, rect.Top + y))
+                    {
+                        done++;
+                        continue;
+                    }
                     var bgr = ReadBufferPixel(x, y);
                     int localMin = int.MaxValue;
                     BgrColor? matchedTarget = null;
@@ -1201,6 +1209,10 @@ public partial class Form1 : Form
                             {
                                 state.Stop();
                                 break;
+                            }
+                            if (poly != null && !poly.Contains(rect.Left + x, rect.Top + y))
+                            {
+                                continue;
                             }
                             var bgr = ReadBufferPixel(x, y);
                             int localMin = int.MaxValue;
@@ -2009,7 +2021,7 @@ public partial class Form1 : Form
             try
             {
                 Logger.Debug("[auto_all] scanning...");
-                var groups = ScanMatchingPointsForAllColors(snapshot.recordedRange.Value, htmlColors, token);
+                var groups = ScanMatchingPointsForAllColors(snapshot.recordedRange.Value, htmlColors, token, _state.GetPolygon());
                 Logger.Debug($"[auto_all] scan returned groups={groups.Count} cancelled={token.IsCancellationRequested}");
                 if (token.IsCancellationRequested) return;
 
@@ -2066,8 +2078,9 @@ public partial class Form1 : Form
     /// 必须包含所有采样点（含未匹配），孤岛检测的护城河判定依赖“采样了但没匹配”的点。
     /// 用 (col,row) 六边形坐标作 key，与 ScanPattern 的品字形采样严格对应。
     /// </summary>
-    private Dictionary<long, BgrColor?> ScanLabeledGrid(Rectangle rect, List<BgrColor> targets, CancellationToken token)
+    private Dictionary<long, BgrColor?> ScanLabeledGrid(Rectangle rect, List<BgrColor> targets, CancellationToken token, List<Point>? polygon = null)
     {
+        var poly = polygon != null && polygon.Count >= 3 ? new OrthogonalPolygon(polygon) : null;
         Logger.Debug($"[scan_island] ScanLabeledGrid rect={rect} targets={targets.Count} tol={_options.IslandColorTol}(island) step={_options.ScanStep} workers={_options.ScanWorkers}");
 
         int width = Math.Max(1, rect.Width);
@@ -2151,6 +2164,10 @@ public partial class Form1 : Form
                         {
                             return;
                         }
+                        if (poly != null && !poly.Contains(rect.Left + x, rect.Top + y))
+                        {
+                            continue;
+                        }
                         var bgr = ReadBufferPixel(x, y);
                         int localMin = int.MaxValue;
                         BgrColor? bestTarget = null;
@@ -2190,7 +2207,7 @@ public partial class Form1 : Form
     /// 遗漏点检测主流程：扫描建图 → 孤岛判定 → 标注为待处理点 → 弹窗确认 → 复用全自动填涂补涂。
     /// 在后台 Task 中运行，所有 UI 操作通过 BeginInvoke 切回 UI 线程。
     /// </summary>
-    private void RunIslandDetection(Rectangle rect, CancellationToken token)
+    private void RunIslandDetection(Rectangle rect, CancellationToken token, List<Point>? polygon = null)
     {
         Logger.Debug("[island] RunIslandDetection start");
         var targets = GetPredefinedColors();
@@ -2201,7 +2218,7 @@ public partial class Form1 : Form
         }
 
         // 1) 扫描建图
-        var labeled = ScanLabeledGrid(rect, targets, token);
+        var labeled = ScanLabeledGrid(rect, targets, token, polygon);
         if (token.IsCancellationRequested)
         {
             return;
@@ -2364,7 +2381,7 @@ public partial class Form1 : Form
         {
             try
             {
-                RunIslandDetection(snapshot.recordedRange.Value, token);
+                RunIslandDetection(snapshot.recordedRange.Value, token, _state.GetPolygon());
             }
             catch (Exception ex)
             {
@@ -2454,8 +2471,9 @@ public partial class Form1 : Form
         };
     }
 
-    private Dictionary<BgrColor, List<Point>> ScanMatchingPointsForAllColors(Rectangle rect, List<BgrColor> targets, CancellationToken token)
+    private Dictionary<BgrColor, List<Point>> ScanMatchingPointsForAllColors(Rectangle rect, List<BgrColor> targets, CancellationToken token, List<Point>? polygon = null)
     {
+        var poly = polygon != null && polygon.Count >= 3 ? new OrthogonalPolygon(polygon) : null;
         Logger.Debug($"[scan_all] ScanMatchingPointsForAllColors rect={rect} targets={targets.Count}");
         var groups = new ConcurrentDictionary<BgrColor, ConcurrentBag<Point>>();
         foreach(var c in targets) groups[c] = new ConcurrentBag<Point>();
@@ -2498,6 +2516,7 @@ public partial class Form1 : Form
             for (int x = startOffset; x < width; x += _options.ScanStep)
             {
                 if (token.IsCancellationRequested) return;
+                if (poly != null && !poly.Contains(rect.Left + x, rect.Top + y)) continue;
 
                 int offset = (y * data.Stride) + (x * 4);
                 byte b = buffer[offset];
