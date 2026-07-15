@@ -281,7 +281,7 @@ partial class Form1
             this.label2.Name = "label2";
             this.label2.Size = new System.Drawing.Size(144, 20);
             this.label2.TabIndex = 21;
-            this.label2.Text = "框选自动填充的范围";
+            this.label2.Text = "划取检测范围（两种方式）";
             // 
             // label3
             // 

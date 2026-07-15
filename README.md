@@ -172,7 +172,7 @@ wplace_canYouHelpMe.exe --island-color-tol 15 --island-max-size 5 --island-moat-
 
 # 构建与打包
 
-当前版本：`1.5.3`
+当前版本：`1.5.4`
 
 项目基于 .NET 8，所有命令在项目根目录下执行。
 
