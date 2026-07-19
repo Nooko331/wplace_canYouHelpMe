@@ -29,6 +29,7 @@ public partial class Form1 : Form
     private const string LatestReleaseRedirectUrl = "https://github.com/Nooko331/wplace_canYouHelpMe/releases/latest";
     private const int DefaultScanWorkers = 1;
     private const int DefaultScanStep = 10;
+    private const int LayoutDesignDpi = 96;
 
     private readonly Options _options;
     private readonly uint _showMainWindowMessage;
@@ -146,6 +147,11 @@ public partial class Form1 : Form
 
         ApplyLayout(_layoutMode);
 
+        // The handle (and therefore the monitor DPI) is known by Load time.
+        // Reapply once before the form is first painted in case construction
+        // happened before WinForms could resolve the target monitor DPI.
+        Load += (_, _) => ApplyLayout(_layoutMode);
+
         SetHook();
         Shown += (_, _) =>
         {
@@ -159,6 +165,12 @@ public partial class Form1 : Form
     {
         base.OnFormClosing(e);
         CleanupResources();
+    }
+
+    protected override void OnDpiChanged(DpiChangedEventArgs e)
+    {
+        base.OnDpiChanged(e);
+        ApplyLayout(_layoutMode);
     }
 
     protected override void WndProc(ref Message m)
@@ -2813,12 +2825,22 @@ public partial class Form1 : Form
 
     private void ApplyLayout(UiLayoutMode mode)
     {
+        int S(int value) => (int)Math.Round(
+            value * DeviceDpi / (double)LayoutDesignDpi,
+            MidpointRounding.AwayFromZero);
+        Point P(int x, int y) => new Point(S(x), S(y));
+        Size Z(int width, int height) => new Size(S(width), S(height));
+
         SuspendLayout();
         try
         {
+            labelRec.Location = P(4, 4);
+            _compactDivider1.Width = S(2);
+            _compactDivider2.Width = S(2);
+
             if (mode == UiLayoutMode.Vertical)
             {
-                ClientSize = new Size(383, 760);
+                ClientSize = Z(383, 630);
                 _compactDivider1.Visible = false;
                 _compactDivider2.Visible = false;
                 color1.Visible = true;
@@ -2838,10 +2860,10 @@ public partial class Form1 : Form
                 labelMatchValue.Visible = true;
                 progressMatch.Visible = true;
                 checkShowRange.Visible = true;
-                panelLeft.Location = new Point(12, 62);
-                panelLeft.Size = new Size(108, 50);
-                panelRight.Location = new Point(133, 62);
-                panelRight.Size = new Size(106, 50);
+                panelLeft.Location = P(12, 56);
+                panelLeft.Size = Z(108, 44);
+                panelRight.Location = P(133, 56);
+                panelRight.Size = Z(106, 44);
                 labelCores.Text = "调用CPU数量";
                 btnAutoCores.Text = "自动决定CPU数量";
                 label7.Text = "扫描步长";
@@ -2849,64 +2871,64 @@ public partial class Form1 : Form
                 btnFill.Text = "自动检测及填充";
                 btnAutoFillAll.Text = "全自动检测及填充";
                 labelAutoAll.Text = "全自动填充进度";
-                color1.Location = new Point(12, 39);
-                color2.Location = new Point(133, 39);
-                label1.Location = new Point(245, 62);
-                label2.Location = new Point(224, 273);
-                label3.Location = new Point(12, 9);
-                label4.Location = new Point(303, 157);
-                label5.Location = new Point(252, 198);
-                label6.Location = new Point(12, 127);
-                labelCores.Location = new Point(12, 160);
-                textCores.Location = new Point(119, 157);
-                textCores.Size = new Size(40, 27);
-                btnAutoCores.Location = new Point(10, 198);
-                btnAutoCores.Size = new Size(142, 26);
-                label7.Location = new Point(14, 234);
-                ScanStep.Location = new Point(89, 231);
-                ScanStep.Size = new Size(69, 27);
-                label8.Location = new Point(176, 234);
-                btnRange.Location = new Point(12, 273);
-                btnRange.Size = new Size(122, 26);
-                RangeRecord.Location = new Point(12, 311);
-                TheRange.Location = new Point(113, 311);
-                checkShowRange.Location = new Point(12, 335);
-                btnFill.Location = new Point(12, 371);
-                btnFill.Size = new Size(122, 26);
-                label10.Location = new Point(167, 371);
-                labelScan.Location = new Point(14, 412);
-                labelScanValue.Location = new Point(160, 412);
-                progressScan.Location = new Point(14, 435);
-                progressScan.Size = new Size(351, 28);
-                labelMatchProgress.Location = new Point(17, 486);
-                labelMatchValue.Location = new Point(160, 486);
-                progressMatch.Location = new Point(12, 509);
-                progressMatch.Size = new Size(351, 28);
-                btnAutoFillAll.Location = new Point(12, 550);
-                btnAutoFillAll.Size = new Size(160, 26);
+                color1.Location = P(12, 34);
+                color2.Location = P(133, 34);
+                label1.Location = P(245, 56);
+                label2.Location = P(224, 227);
+                label3.Location = P(12, 8);
+                label4.Location = P(303, 131);
+                label5.Location = P(252, 163);
+                label6.Location = P(12, 108);
+                labelCores.Location = P(12, 131);
+                textCores.Location = P(119, 128);
+                textCores.Size = Z(40, 27);
+                btnAutoCores.Location = P(10, 160);
+                btnAutoCores.Size = Z(142, 26);
+                label7.Location = P(14, 194);
+                ScanStep.Location = P(89, 191);
+                ScanStep.Size = Z(69, 27);
+                label8.Location = P(176, 194);
+                btnRange.Location = P(12, 224);
+                btnRange.Size = Z(122, 26);
+                RangeRecord.Location = P(12, 256);
+                TheRange.Location = P(113, 256);
+                checkShowRange.Location = P(12, 278);
+                btnFill.Location = P(12, 310);
+                btnFill.Size = Z(122, 26);
+                label10.Location = P(167, 313);
+                labelScan.Location = P(14, 344);
+                labelScanValue.Location = P(160, 344);
+                progressScan.Location = P(14, 366);
+                progressScan.Size = Z(351, 24);
+                labelMatchProgress.Location = P(17, 400);
+                labelMatchValue.Location = P(160, 400);
+                progressMatch.Location = P(12, 422);
+                progressMatch.Size = Z(351, 24);
+                btnAutoFillAll.Location = P(12, 458);
+                btnAutoFillAll.Size = Z(160, 26);
                 radioSpeedBalanced.Text = "平衡";
-                radioSpeedBalanced.Location = new Point(178, 553);
+                radioSpeedBalanced.Location = P(178, 461);
                 radioSpeedExtreme.Text = "极致速度";
-                radioSpeedExtreme.Location = new Point(252, 553);
+                radioSpeedExtreme.Location = P(252, 461);
                 radioSpeedBalanced.Visible = true;
                 radioSpeedExtreme.Visible = true;
-                labelAutoAll.Location = new Point(17, 590);
-                labelAutoAllValue.Location = new Point(160, 590);
-                progressAutoAll.Location = new Point(12, 615);
-                progressAutoAll.Size = new Size(351, 28);
+                labelAutoAll.Location = P(17, 491);
+                labelAutoAllValue.Location = P(160, 491);
+                progressAutoAll.Location = P(12, 513);
+                progressAutoAll.Size = Z(351, 24);
                 btnRunIslandDetect.Text = "运行遗漏检测";
-                btnRunIslandDetect.Location = new Point(12, 652);
-                btnRunIslandDetect.Size = new Size(160, 26);
+                btnRunIslandDetect.Location = P(12, 548);
+                btnRunIslandDetect.Size = Z(160, 26);
                 btnRunIslandDetect.Visible = true;
-                btnToggleLayout.Location = new Point(178, 652);
-                btnToggleLayout.Size = new Size(145, 26);
-                labelCurrentVersion.Location = new Point(12, 690);
-                linkGithubOrUpdate.Location = new Point(12, 712);
+                btnToggleLayout.Location = P(178, 548);
+                btnToggleLayout.Size = Z(145, 26);
+                labelCurrentVersion.Location = P(12, 581);
+                linkGithubOrUpdate.Location = P(12, 603);
                 btnToggleLayout.Text = "切换为精简布局";
             }
             else
             {
-                ClientSize = new Size(700, 180);
+                ClientSize = Z(700, 180);
                 _compactDivider1.Visible = true;
                 _compactDivider2.Visible = false;
                 color1.Visible = false;
@@ -2927,74 +2949,92 @@ public partial class Form1 : Form
                 progressMatch.Visible = false;
 
                 // 区域1：颜色/CPU/步长/划取
-                label3.Location = new Point(10, 8);
-                panelLeft.Location = new Point(10, 56);
-                panelLeft.Size = new Size(108, 50);
-                panelRight.Location = new Point(128, 56);
-                panelRight.Size = new Size(106, 50);
-                color1.Location = new Point(10, 33);
-                color2.Location = new Point(128, 33);
+                label3.Location = P(10, 8);
+                panelLeft.Location = P(10, 56);
+                panelLeft.Size = Z(108, 50);
+                panelRight.Location = P(128, 56);
+                panelRight.Size = Z(106, 50);
+                color1.Location = P(10, 33);
+                color2.Location = P(128, 33);
 
                 labelCores.Text = "cpu";
-                labelCores.Location = new Point(248, 32);
-                textCores.Location = new Point(286, 29);
-                textCores.Size = new Size(40, 27);
+                labelCores.Location = P(248, 32);
+                textCores.Location = P(286, 29);
+                textCores.Size = Z(40, 27);
                 btnAutoCores.Text = "自动";
-                btnAutoCores.Location = new Point(332, 29);
-                btnAutoCores.Size = new Size(56, 26);
+                btnAutoCores.Location = P(332, 29);
+                btnAutoCores.Size = Z(56, 26);
 
                 label7.Text = "步长";
-                label7.Location = new Point(248, 66);
-                ScanStep.Location = new Point(286, 63);
-                ScanStep.Size = new Size(60, 27);
+                label7.Location = P(248, 66);
+                ScanStep.Location = P(286, 63);
+                ScanStep.Size = Z(60, 27);
 
                 btnRange.Text = "划取";
-                btnRange.Location = new Point(248, 98);
-                btnRange.Size = new Size(58, 26);
-                RangeRecord.Location = new Point(312, 102);
-                checkShowRange.Location = new Point(248, 128);
+                btnRange.Location = P(248, 98);
+                btnRange.Size = Z(58, 26);
+                RangeRecord.Location = P(312, 102);
+                checkShowRange.Location = P(248, 128);
                 checkShowRange.Visible = true;
 
                 // 区域2：动作按钮 + 进度
                 btnFill.Text = "自动";
-                btnFill.Location = new Point(430, 20);
-                btnFill.Size = new Size(58, 26);
+                btnFill.Location = P(430, 20);
+                btnFill.Size = Z(58, 26);
 
                 btnAutoFillAll.Text = "全自动";
-                btnAutoFillAll.Location = new Point(494, 20);
-                btnAutoFillAll.Size = new Size(76, 26);
+                btnAutoFillAll.Location = P(494, 20);
+                btnAutoFillAll.Size = Z(76, 26);
                 radioSpeedBalanced.Text = "平衡";
-                radioSpeedBalanced.Location = new Point(430, 108);
+                radioSpeedBalanced.Location = P(430, 108);
                 radioSpeedExtreme.Text = "极致";
-                radioSpeedExtreme.Location = new Point(492, 108);
+                radioSpeedExtreme.Location = P(492, 108);
                 radioSpeedBalanced.Visible = true;
                 radioSpeedExtreme.Visible = true;
                 btnRunIslandDetect.Text = "遗漏";
-                btnRunIslandDetect.Location = new Point(574, 20); // 全自动(494,20,w76)右侧
-                btnRunIslandDetect.Size = new Size(58, 26);
+                btnRunIslandDetect.Location = P(574, 20); // 全自动(494,20,w76)右侧
+                btnRunIslandDetect.Size = Z(58, 26);
                 btnRunIslandDetect.Visible = true;
 
                 labelAutoAll.Text = "总进度";
-                labelAutoAll.Location = new Point(430, 58);
-                labelAutoAllValue.Location = new Point(500, 58);
-                progressAutoAll.Location = new Point(430, 82);
-                progressAutoAll.Size = new Size(250, 22);
+                labelAutoAll.Location = P(430, 58);
+                labelAutoAllValue.Location = P(500, 58);
+                progressAutoAll.Location = P(430, 82);
+                progressAutoAll.Size = Z(250, 22);
 
                 // 区域1底部：入口
-                labelCurrentVersion.Location = new Point(10, 124);
-                linkGithubOrUpdate.Location = new Point(10, 146);
-                btnToggleLayout.Location = new Point(548, 142);
-                btnToggleLayout.Size = new Size(145, 26);
+                labelCurrentVersion.Location = P(10, 124);
+                linkGithubOrUpdate.Location = P(10, 146);
+                btnToggleLayout.Location = P(548, 142);
+                btnToggleLayout.Size = Z(145, 26);
                 btnToggleLayout.Text = "切换为完整布局";
 
-                _compactDivider1.Location = new Point(410, 16);
-                _compactDivider1.Height = 140;
+                _compactDivider1.Location = P(410, 16);
+                _compactDivider1.Height = S(140);
             }
         }
         finally
         {
             ResumeLayout(performLayout: true);
         }
+
+        // AutoSize labels can become a few pixels wider with a different CJK
+        // font or with Windows' text-size accessibility setting.  Keep a small
+        // trailing margin instead of clipping any such control at the form edge.
+        int margin = S(7);
+        int requiredWidth = Controls.Cast<Control>()
+            .Where(control => control.Visible)
+            .Select(control => control.Right)
+            .DefaultIfEmpty(0)
+            .Max() + margin;
+        int requiredHeight = Controls.Cast<Control>()
+            .Where(control => control.Visible)
+            .Select(control => control.Bottom)
+            .DefaultIfEmpty(0)
+            .Max() + margin;
+        ClientSize = new Size(
+            Math.Max(ClientSize.Width, requiredWidth),
+            Math.Max(ClientSize.Height, requiredHeight));
     }
 
     private async Task CheckLatestReleaseAsync()

@@ -34,23 +34,12 @@ static class Program
             Logger.Shutdown();
         };
 
-        try
-        {
-            NativeMethods.SetProcessDpiAwareness(2);
-        }
-        catch
-        {
-            try
-            {
-                NativeMethods.SetProcessDPIAware();
-            }
-            catch
-            {
-                // Ignore if not supported.
-            }
-        }
-
-        Application.SetHighDpiMode(HighDpiMode.SystemAware);
+        // Let WinForms manage DPI before any window handle is created.  The old
+        // native call made the process DPI-aware, but ApplyLayout still wrote
+        // unscaled pixel coordinates afterwards.  PerMonitorV2 also lets the
+        // form relayout when it is moved between monitors with different scale
+        // factors.
+        Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
