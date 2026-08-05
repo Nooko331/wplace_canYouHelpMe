@@ -81,6 +81,13 @@ namespace WplaceColorWatch
                 return;
             }
 
+            // The model stores virtual-desktop coordinates, while the overlay
+            // paints in client coordinates. Their origins only coincide on a
+            // primary monitor at (0, 0). Translate by the actual client origin
+            // so secondary monitors also work, including monitors at negative X/Y.
+            var clientOrigin = PointToScreen(Point.Empty);
+            e.Graphics.TranslateTransform(-clientOrigin.X, -clientOrigin.Y);
+
             using var outerPen = new Pen(SelectionOuterColor, 3);
             using var innerPen = new Pen(SelectionAccentColor, 1);
             if (_polygon != null && _polygon.Count >= 2)
