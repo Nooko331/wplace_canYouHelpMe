@@ -30,6 +30,14 @@ public partial class Form1 : Form
     private const int DefaultScanWorkers = 1;
     private const int DefaultScanStep = 10;
     private const int LayoutDesignDpi = 96;
+    private const int CompactLayoutWidth = 740;
+    private const int CompactLayoutHeight = 192;
+    private const int ClearSampleMinWaitMs = 64;
+    private const int ClearSampleTimeoutMs = 240;
+    private const int ClearSamplePollMs = 16;
+    private const int ClearSampleStableReads = 3;
+    private const int ClearSampleStableTolerance = 1;
+    private const int ClearSamplePaletteTolerance = 12;
 
     private readonly Options _options;
     private readonly uint _showMainWindowMessage;
@@ -40,7 +48,6 @@ public partial class Form1 : Form
     // 是否正在划取检测范围（SelectionForm 模态打开中）。为 true 时，ESC 不被全局钩子吞掉，
     // 放行给 SelectionForm 处理，使其能立即退出。
     private bool _selectingRange;
-    private CancellationTokenSource? _scanCts;
     private CancellationTokenSource? _autoAllCts;
     private CancellationTokenSource? _islandCts;
     private int _autoAllProgressCurrent;
@@ -69,6 +76,8 @@ public partial class Form1 : Form
         _options = options;
         _showMainWindowMessage = showMainWindowMessage;
         InitializeComponent();
+        _colorRules = new ColorRuleSet(GetPredefinedColors());
+        InitializeColorManagementUi();
         _currentAppVersion = GetCurrentAppVersion();
         _currentVersionText = GetCurrentVersionText(_currentAppVersion);
         FormBorderStyle = FormBorderStyle.FixedSingle;
@@ -85,7 +94,6 @@ public partial class Form1 : Form
         updateTimer.Start();
 
         btnRange.Click += (_, _) => BeginRangeSelect();
-        btnFill.Click += (_, _) => BeginFill();
         btnAutoFillAll.Click += (_, _) => BeginAutoFillAll();
         btnAutoCores.Click += (_, _) => AutoDetectCores();
         btnToggleLayout.Click += (_, _) => ToggleLayoutMode();
@@ -324,12 +332,6 @@ public partial class Form1 : Form
         //     TryFireSpace();
         // }
 
-        if (snapshot.autoFillEnabled && snapshot.autoFillReady && snapshot.recordedRange.HasValue && snapshot.recordedBgrs.Count > 0)
-        {
-            // 自动填充现在在扫描完成后由后台 Task 直接批量执行
-            // 这里仅保持对全自动的兼容，半自动的 trigger 已内聚到 BeginFill
-        }
-
         UpdateUi(snapshot, match);
         UpdateOverlayFromState(snapshot);
     }
@@ -490,54 +492,37 @@ public partial class Form1 : Form
             TheRange.Text = "0";
         }
 
-        bool scanRunning = _scanCts != null || _autoAllCts != null;
-        bool matchRunning = snapshot.autoFillEnabled && snapshot.autoFillReady;
-
-        var scanTotal = Math.Max(1, snapshot.scanTotal);
-        progressScan.Maximum = scanTotal;
-        progressScan.Value = Math.Min(snapshot.scanDone, scanTotal);
-        var scanEta = scanRunning ? GetEta(snapshot.scanStartTime, snapshot.scanDone, snapshot.scanTotal) : "";
-        labelScanValue.Text = $"{snapshot.scanDone} / {snapshot.scanTotal}{scanEta}";
-
-        var matchTotal = Math.Max(1, snapshot.autoFillPointsCount);
-        progressMatch.Maximum = matchTotal;
-        progressMatch.Value = Math.Min(snapshot.autoFillIndex, matchTotal);
-        var matchEta = matchRunning ? GetEta(snapshot.autoFillStartTime, snapshot.autoFillIndex, snapshot.autoFillPointsCount) : "";
-        labelMatchValue.Text = $"{snapshot.autoFillIndex} / {snapshot.autoFillPointsCount}{matchEta}";
-
-        if (_layoutMode == UiLayoutMode.Horizontal)
+        bool operationRunning = _autoAllCts != null || _islandCts != null;
+        bool fillPhase = _autoAllProgressTotal > 0;
+        int taskTotal;
+        int taskCurrent;
+        DateTime taskStart;
+        if (fillPhase)
         {
-            int total = 0;
-            int current = 0;
-            DateTime start = DateTime.Now;
-            bool isRunning = false;
-            if (_autoAllProgressTotal > 0 && (_autoAllProgressActive || _autoAllProgressCurrent > 0))
-            {
-                total = _autoAllProgressTotal;
-                current = _autoAllProgressCurrent;
-                start = _autoAllProgressStart;
-                isRunning = _autoAllProgressActive;
-            }
-            else if (snapshot.autoFillPointsCount > 0)
-            {
-                total = snapshot.autoFillPointsCount;
-                current = snapshot.autoFillIndex;
-                start = snapshot.autoFillStartTime;
-                isRunning = matchRunning;
-            }
-            else if (snapshot.scanTotal > 0)
-            {
-                total = snapshot.scanTotal;
-                current = snapshot.scanDone;
-                start = snapshot.scanStartTime;
-                isRunning = scanRunning;
-            }
-
-            progressAutoAll.Maximum = Math.Max(1, total);
-            progressAutoAll.Value = Math.Min(Math.Max(0, current), progressAutoAll.Maximum);
-            var totalEta = isRunning ? GetEta(start, current, total) : "";
-            labelAutoAllValue.Text = $"{current} / {total}{totalEta}";
+            taskTotal = _autoAllProgressTotal;
+            taskCurrent = _autoAllProgressCurrent;
+            taskStart = _autoAllProgressStart;
+            labelAutoAll.Text = operationRunning ? "填色进度" : "任务进度";
         }
+        else if (operationRunning || snapshot.scanTotal > 0)
+        {
+            taskTotal = snapshot.scanTotal;
+            taskCurrent = snapshot.scanDone;
+            taskStart = snapshot.scanStartTime;
+            labelAutoAll.Text = operationRunning ? "扫描进度" : "任务进度";
+        }
+        else
+        {
+            taskTotal = 0;
+            taskCurrent = 0;
+            taskStart = DateTime.Now;
+            labelAutoAll.Text = "任务进度";
+        }
+
+        progressAutoAll.Maximum = Math.Max(1, taskTotal);
+        progressAutoAll.Value = Math.Min(Math.Max(0, taskCurrent), progressAutoAll.Maximum);
+        var taskEta = operationRunning ? GetEta(taskStart, taskCurrent, taskTotal) : "";
+        labelAutoAllValue.Text = $"{taskCurrent} / {taskTotal}{taskEta}";
     }
 
     private void TrySetEnglishInputLanguage()
@@ -614,15 +599,15 @@ public partial class Form1 : Form
 
     private bool IsOperationActive()
     {
-        return _scanCts != null || _autoAllCts != null || _islandCts != null;
+        return _autoAllCts != null || _islandCts != null;
     }
 
     private void SetOperationControlsEnabled(bool enabled)
     {
         btnRange.Enabled = enabled;
-        btnFill.Enabled = enabled;
         btnAutoFillAll.Enabled = enabled;
         btnRunIslandDetect.Enabled = enabled;
+        _colorManagerButton.Enabled = enabled;
         btnAutoCores.Enabled = enabled;
         btnToggleLayout.Enabled = enabled;
         textCores.Enabled = enabled;
@@ -776,50 +761,20 @@ public partial class Form1 : Form
             return;
         }
 
-        // 扫描期间隐藏覆盖层，避免把覆盖层内容扫进去
-        // 但如果已经进入填充模式（_overlayFillMode），不要隐藏覆盖层，填充覆盖层由 SetOverlayFillPoints 管理
-        if (_scanCts != null && !_overlayFillMode)
+        // 全自动或遗漏检测扫描期间隐藏覆盖层，避免把覆盖层内容扫进截图。
+        // 建立待填点列表后由 SetOverlayFillPoints 切换到填充覆盖层。
+        if ((_autoAllCts != null || _islandCts != null) && !_overlayFillMode)
         {
             if (_previewOverlay != null && _previewOverlay.Visible)
             {
-                Logger.Debug("[overlay] UpdateOverlayFromState: scanCts active, hiding");
+                Logger.Debug("[overlay] UpdateOverlayFromState: scan active, hiding");
             }
-            _previewOverlay?.Hide();
-            return;
-        }
-
-        // 全自动开始但尚未建立进度点列表前也隐藏
-        if (_autoAllCts != null && !_overlayFillIsFullAuto)
-        {
-            Logger.Debug($"[overlay] UpdateOverlayFromState: autoAllCts active, fillIsFullAuto=false, hiding");
             _previewOverlay?.Hide();
             return;
         }
 
         var range = snapshot.recordedRange.Value;
         var poly = _state.GetPolygon();
-
-        // 半自动填充：显示剩余填充点
-        if (!_overlayFillIsFullAuto && snapshot.autoFillEnabled && snapshot.autoFillReady)
-        {
-            var fillPoints = _state.GetAutoFillPoints();
-            if (!_overlayFillMode || _overlayFillPoints.Count != fillPoints.Count || !ReferenceEquals(_overlayFillPoints, fillPoints))
-            {
-                Logger.Debug($"[overlay] UpdateOverlayFromState: semi-auto fill mode overlayFillMode={_overlayFillMode} fillPts={fillPoints.Count} startIdx={snapshot.autoFillIndex}");
-                _overlayFillMode = true;
-                _overlayFillIsFullAuto = false;
-                _overlayFillPoints = fillPoints;
-                _overlayFillStartIndex = snapshot.autoFillIndex;
-                EnsureOverlay().SetData(range, fillPoints, snapshot.autoFillIndex, poly);
-            }
-            else if (_overlayFillStartIndex != snapshot.autoFillIndex)
-            {
-                Logger.Debug($"[overlay] UpdateOverlayFromState: semi-auto fill update startIdx {_overlayFillStartIndex} -> {snapshot.autoFillIndex}");
-                _overlayFillStartIndex = snapshot.autoFillIndex;
-                _previewOverlay?.SetStartIndex(snapshot.autoFillIndex);
-            }
-            return;
-        }
 
         // 全自动：由 ExecuteAutoFillAll 直接维护覆盖层，这里只负责保持显示
         if (_overlayFillIsFullAuto)
@@ -915,126 +870,6 @@ public partial class Form1 : Form
         }
         _previewOverlay.BringToFront();
         return _previewOverlay;
-    }
-
-    private void BeginFill()
-    {
-        Logger.Debug("[ui] BeginFill clicked");
-        if (!btnFill.Enabled)
-        {
-            Logger.Debug("[auto_fill] button disabled, skipping");
-            return;
-        }
-        _options.ScanStep = ReadScanStep();
-        if (ScanStep.Text != _options.ScanStep.ToString())
-        {
-            ScanStep.Text = _options.ScanStep.ToString();
-        }
-        var snapshot = _state.Snapshot();
-        Logger.Debug($"[auto_fill] state: bgrs={snapshot.recordedBgrs.Count} range={snapshot.recordedRange.HasValue} autoFillEnabled={snapshot.autoFillEnabled}");
-        if (snapshot.recordedBgrs.Count == 0)
-        {
-            Logger.Debug("[auto_fill] no colors recorded, showing message box");
-            IslandConfirmDialog.Show(this, "请通过 A 键选取颜色", "提示", false);
-            return;
-        }
-        if (!snapshot.recordedRange.HasValue)
-        {
-            Logger.Debug("[auto_fill] no range, showing message box");
-            IslandConfirmDialog.Show(this, "请框选范围", "提示", false);
-            return;
-        }
-        // 将用户取色标准化到预定义调色板，以避免屏幕取色与游戏实际颜色的微小差异
-        var rawTarget = snapshot.recordedBgrs.Count > 1
-            ? snapshot.recordedBgrs[1]
-            : snapshot.recordedBgrs[0];
-        var predefinedColors = GetPredefinedColors();
-        BgrColor fillTarget = rawTarget;
-        int minDiff = int.MaxValue;
-        foreach (var pc in predefinedColors)
-        {
-            int diff = rawTarget.MaxDiff(pc);
-            if (diff < minDiff)
-            {
-                minDiff = diff;
-                fillTarget = pc;
-            }
-        }
-        Logger.Debug($"[auto_fill] normalized color: raw=[{rawTarget.R},{rawTarget.G},{rawTarget.B}] -> predefined=[{fillTarget.R},{fillTarget.G},{fillTarget.B}] diff={minDiff}");
-        var fillTargets = new List<BgrColor> { fillTarget };
-        Logger.Debug($"[auto_fill] fillTargets={fillTargets.Count} targets=[{string.Join(",", fillTargets.Select(c => $"[{c.R},{c.G},{c.B}]"))}]");
-        var workers = ReadScanWorkers();
-        _options.ScanWorkers = workers;
-        if (textCores.Text != workers.ToString())
-        {
-            textCores.Text = workers.ToString();
-        }
-        Logger.Debug($"[auto_fill] workers={workers} step={_options.ScanStep}");
-        _state.StartAutoFill();
-        SetOperationControlsEnabled(false);
-        HidePreviewOverlay();
-        Logger.Debug("[auto_fill] starting scan task...");
-        Thread.Sleep(200);
-        _scanCts?.Cancel();
-        _scanCts = new CancellationTokenSource();
-        var token = _scanCts.Token;
-        Logger.Debug("[auto_fill] scanning...");
-        Task.Run(() =>
-        {
-            try
-            {
-                var points = ScanMatchingPoints(snapshot.recordedRange.Value, fillTargets, token, _state.GetPolygon());
-                Logger.Debug($"[auto_fill] scan returned points={points.Count} cancelled={token.IsCancellationRequested}");
-                if (token.IsCancellationRequested)
-                {
-                    Logger.Debug("[scan] canceled before apply");
-                    return;
-                }
-                _state.SetAutoFillPoints(points);
-                Logger.Debug($"[auto_fill] enabled points={points.Count}");
-
-                if (points.Count > 0)
-                {
-                    // 对点进行聚类排序，使覆盖层显示顺序与实际填色顺序一致
-                    var clusters = FillPlanner.ClusterPoints(points, _options.ScanStep, _options.ClusterNeighborDistance);
-                    var orderedPoints = FillPlanner.FlattenClusters(clusters);
-                    Logger.Debug($"[auto_fill] clustered into {clusters.Count} groups, ordered={orderedPoints.Count} points");
-
-                    // 初始化填充覆盖层，使用聚类后的顺序
-                    Logger.Debug($"[auto_fill] setting up fill overlay with {orderedPoints.Count} points");
-                    BeginInvoke((Action)(() => SetOverlayFillPoints(new List<Point>(orderedPoints), false)));
-                    Logger.Debug($"[auto_fill] executing {orderedPoints.Count} fill points...");
-                    ExecuteAutoFillPoints(orderedPoints, false, token);
-                    Logger.Debug($"[auto_fill] ExecuteAutoFillPoints completed");
-                }
-                else
-                {
-                    Logger.Debug("[auto_fill] no points found, fill skipped");
-                    BeginInvoke((Action)(() =>
-                    {
-                        IslandConfirmDialog.Show(this, "未找到匹配颜色的像素点，请检查颜色容差设置", "提示", false);
-                    }));
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"[scan] failed: {ex}");
-            }
-            finally
-            {
-                Logger.Debug("[auto_fill] task finally: restoring UI");
-                BeginInvoke((Action)(() =>
-                {
-                    SetOperationControlsEnabled(true);
-                    _state.StopAll();
-                    ClearOverlayFill();
-                    RestorePreviewOverlayIfChecked();
-                    var cts = Interlocked.Exchange(ref _scanCts, null);
-                    cts?.Dispose();
-                    Logger.Debug("[auto_fill] task cleanup done");
-                }));
-            }
-        }, token);
     }
 
     private List<Point> ScanMatchingPoints(Rectangle rect, List<BgrColor> bgrs, CancellationToken token, List<Point>? polygon = null)
@@ -1426,17 +1261,6 @@ public partial class Form1 : Form
         }
     }
 
-    private void CancelScan()
-    {
-        var cts = Interlocked.Exchange(ref _scanCts, null);
-        if (cts != null)
-        {
-            Logger.Debug("[cancel] CancelScan: cancelling and disposing scanCts");
-            cts.Cancel();
-            cts.Dispose();
-        }
-    }
-
     private static BgrColor GetPixelAt(int x, int y)
     {
         using var dc = new ScreenDc();
@@ -1704,7 +1528,7 @@ public partial class Form1 : Form
         SendMouseClick(NativeMethods.MOUSEEVENTF_RIGHTDOWN, NativeMethods.MOUSEEVENTF_RIGHTUP);
     }
 
-    private static Point? PickSafePos(Rectangle? avoidRect)
+    private static Point? PickSafePos(Rectangle? avoidRect, Point? avoidPoint = null)
     {
         foreach (var screen in Screen.AllScreens)
         {
@@ -1718,7 +1542,11 @@ public partial class Form1 : Form
             };
             foreach (var pt in candidates)
             {
-                if (avoidRect == null || !avoidRect.Value.Contains(pt))
+                bool outsideRange = avoidRect == null || !avoidRect.Value.Contains(pt);
+                bool awayFromSample = !avoidPoint.HasValue ||
+                    Math.Abs(pt.X - avoidPoint.Value.X) >= 50 ||
+                    Math.Abs(pt.Y - avoidPoint.Value.Y) >= 50;
+                if (outsideRange && awayFromSample)
                 {
                     return pt;
                 }
@@ -1762,7 +1590,7 @@ public partial class Form1 : Form
         _startupActivationTimer?.Stop();
         _startupActivationTimer?.Dispose();
         _startupActivationTimer = null;
-        CancelScan();
+        _colorToolTip.Dispose();
         CancelAutoAll();
         CancelIsland();
         Unhook();
@@ -1792,12 +1620,21 @@ public partial class Form1 : Form
                 {
                     return NativeMethods.CallNextHookEx(_hookId, nCode, wParam, lParam);
                 }
+                if (IsColorRulePicking)
+                {
+                    BeginInvoke((Action)(() => ExitColorPicking(true)));
+                    return (IntPtr)1;
+                }
+                if (IsColorManagerVisible)
+                {
+                    BeginInvoke((Action)CloseColorManager);
+                    return (IntPtr)1;
+                }
                 Logger.Debug($"[hook] ESC pressed, stopping all");
                 BeginInvoke((Action)(() =>
                 {
-                    Logger.Debug("[hook] ESC BeginInvoke: calling StopAll/CancelScan/CancelAutoAll/CancelIsland");
+                    Logger.Debug("[hook] ESC BeginInvoke: calling StopAll/CancelAutoAll/CancelIsland");
                     _state.StopAll();
-                    CancelScan();
                     CancelAutoAll();
                     CancelIsland();
                     SetOperationControlsEnabled(true);
@@ -1826,70 +1663,129 @@ public partial class Form1 : Form
             // }
             if (vkCode == NativeMethods.VK_A && !injected)
             {
+                var triggerPosition = Cursor.Position;
+                var triggeredAtMs = Environment.TickCount64;
+                if (QueueColorRulePick(triggerPosition, triggeredAtMs))
+                {
+                    return (IntPtr)1;
+                }
+                if (IsColorManagerVisible)
+                {
+                    Logger.Debug("[hook] A suppressed while color manager is open outside pick mode");
+                    return (IntPtr)1;
+                }
                 Logger.Debug($"[hook] A pressed, recording color");
                 BeginInvoke((Action)(() =>
                 {
                     // 光标位于本程序窗口上时按 A：取色无意义，且此刻本程序窗口往往是前台，
-                    // 后续发送的 I 键 / 左键会被本程序吞掉，或左键直接点到自己的按钮上
-                    // （btnFill/btnAutoFillAll），表现为“按 A 却触发空格/涂色”。直接中止这次取色。
-                    var pos = Cursor.Position;
-                    if (IsCursorOverSelf(pos))
+                    // 后续发送的 I 键 / 左键会被本程序吞掉，或左键直接点到自己的按钮上，
+                    // 表现为“按 A 却触发其他操作”。直接中止这次取色。
+                    var currentPosition = Cursor.Position;
+                    Logger.Debug($"[hook] A handling trigger=({triggerPosition.X},{triggerPosition.Y}) current=({currentPosition.X},{currentPosition.Y}) delayMs={Math.Max(0, Environment.TickCount64 - triggeredAtMs)}");
+                    if (IsCursorOverSelf(triggerPosition))
                     {
-                        Logger.Debug($"[hook] A ignored: cursor over self at ({pos.X},{pos.Y})");
+                        Logger.Debug($"[hook] A ignored: trigger position over self at ({triggerPosition.X},{triggerPosition.Y})");
                         return;
                     }
-                    PerformColorRecordAndAction();
+                    PerformColorRecordAndAction(triggerPosition);
                 }));
             }
         }
         return NativeMethods.CallNextHookEx(_hookId, nCode, wParam, lParam);
     }
 
-    private (BgrColor hover, BgrColor clear) PerformColorRecordAndAction()
+    private (BgrColor hover, BgrColor clear, bool stable, int waitMs, int reads, bool changedFromHover) CaptureColorSamples(Point samplePosition)
     {
-        Logger.Debug("[record] PerformColorRecordAndAction start");
+        Logger.Debug($"[record] CaptureColorSamples start pos=({samplePosition.X},{samplePosition.Y})");
         // 取色前隐藏覆盖层，避免读到覆盖层的颜色
         HidePreviewOverlay();
         try
         {
-            var pos = Cursor.Position;
             BgrColor hover;
             BgrColor clear;
             using (var dc = new ScreenDc())
             {
-                hover = dc.GetPixel(pos.X, pos.Y);
+                hover = dc.GetPixel(samplePosition.X, samplePosition.Y);
             }
-            Logger.Debug($"[record] hover at ({pos.X},{pos.Y}) rgb=[{hover.R},{hover.G},{hover.B}]");
-            var safe = PickSafePos(_state.Snapshot().recordedRange);
+            Logger.Debug($"[record] hover at ({samplePosition.X},{samplePosition.Y}) rgb=[{hover.R},{hover.G},{hover.B}]");
+            var safe = PickSafePos(_state.Snapshot().recordedRange, samplePosition);
+            bool cursorMoved = false;
             if (safe.HasValue)
             {
                 Logger.Debug($"[record] moving cursor to safe pos ({safe.Value.X},{safe.Value.Y})");
-                NativeMethods.SetCursorPos(safe.Value.X, safe.Value.Y);
-                Thread.Sleep(30);
+                cursorMoved = NativeMethods.SetCursorPos(safe.Value.X, safe.Value.Y);
             }
-            using (var dc = new ScreenDc())
-            {
-                clear = dc.GetPixel(pos.X, pos.Y);
-            }
-            NativeMethods.SetCursorPos(pos.X, pos.Y);
-            Logger.Debug($"[record] clear at ({pos.X},{pos.Y}) rgb=[{clear.R},{clear.G},{clear.B}]");
 
-            _state.RecordColors(new List<BgrColor> { hover, clear }, new List<BgrColor> { hover, clear }, pos);
-            Logger.Debug($"[record] raw_colors_rgb=[{string.Join(",", hover.ToRgbArray())}],[{string.Join(",", clear.ToRgbArray())}] pos=({pos.X},{pos.Y})");
-            FocusTargetUnderCursor();
-            Logger.Debug("[action] send key I");
-            Thread.Sleep(50);
-            SendKey(NativeMethods.VK_I);
-            Thread.Sleep(50);
-            Logger.Debug("[action] click left");
-            ClickCurrentPosition();
-            Logger.Debug("[record] PerformColorRecordAndAction done");
-            return (hover, clear);
+            clear = hover;
+            int stableReads = 0;
+            int reads = 0;
+            bool stable = false;
+            bool changedFromHover = false;
+            long settleStart = Environment.TickCount64;
+            var previous = hover;
+            int hoverPaletteDiff = NormalizePaletteColor(hover).diff;
+            if (cursorMoved)
+            {
+                using var dc = new ScreenDc();
+                while (Environment.TickCount64 - settleStart < ClearSampleTimeoutMs)
+                {
+                    Thread.Sleep(ClearSamplePollMs);
+                    clear = dc.GetPixel(samplePosition.X, samplePosition.Y);
+                    reads++;
+                    if (clear.MaxDiff(previous) <= ClearSampleStableTolerance)
+                    {
+                        stableReads++;
+                    }
+                    else
+                    {
+                        stableReads = 1;
+                    }
+                    previous = clear;
+                    changedFromHover = clear.MaxDiff(hover) > ClearSampleStableTolerance;
+                    int waitMs = (int)Math.Max(0, Environment.TickCount64 - settleStart);
+                    int paletteDiff = NormalizePaletteColor(clear).diff;
+                    bool hasClearEvidence = changedFromHover || hoverPaletteDiff <= 2;
+                    if (waitMs >= ClearSampleMinWaitMs &&
+                        stableReads >= ClearSampleStableReads &&
+                        paletteDiff <= ClearSamplePaletteTolerance &&
+                        hasClearEvidence)
+                    {
+                        stable = true;
+                        break;
+                    }
+                }
+            }
+            int elapsedMs = (int)Math.Max(0, Environment.TickCount64 - settleStart);
+            Logger.Debug($"[record] clear at ({samplePosition.X},{samplePosition.Y}) rgb=[{clear.R},{clear.G},{clear.B}] stable={stable} changed={changedFromHover} waitMs={elapsedMs} reads={reads} moved={cursorMoved}");
+
+            _state.RecordColors(new List<BgrColor> { hover, clear }, new List<BgrColor> { hover, clear }, samplePosition);
+            Logger.Debug($"[record] raw_colors_rgb=[{string.Join(",", hover.ToRgbArray())}],[{string.Join(",", clear.ToRgbArray())}] pos=({samplePosition.X},{samplePosition.Y})");
+            return (hover, clear, stable, elapsedMs, reads, changedFromHover);
         }
         finally
         {
-            // 恢复显示由调用方决定，这里不主动恢复
+            NativeMethods.SetCursorPos(samplePosition.X, samplePosition.Y);
         }
+    }
+
+    private (BgrColor hover, BgrColor clear) PerformColorRecordAndAction()
+    {
+        return PerformColorRecordAndAction(Cursor.Position);
+    }
+
+    private (BgrColor hover, BgrColor clear) PerformColorRecordAndAction(Point samplePosition)
+    {
+        Logger.Debug("[record] PerformColorRecordAndAction start");
+        var recorded = CaptureColorSamples(samplePosition);
+        FocusTargetUnderCursor();
+        Logger.Debug("[action] send key I");
+        Thread.Sleep(50);
+        SendKey(NativeMethods.VK_I);
+        Thread.Sleep(50);
+        Logger.Debug("[action] click left");
+        ClickCurrentPosition();
+        Logger.Debug("[record] PerformColorRecordAndAction done");
+        return (recorded.hover, recorded.clear);
     }
 
     private void FocusTargetUnderCursor()
@@ -2023,7 +1919,14 @@ public partial class Form1 : Form
              IslandConfirmDialog.Show(this, "未找到颜色定义", "错误", false);
              return;
         }
-        Logger.Debug($"[auto_all] found {htmlColors.Count} colors, range={snapshot.recordedRange.Value}");
+        var allowedColors = _colorRules.GetEffectiveColors();
+        if (allowedColors.Count == 0)
+        {
+            Logger.Debug("[auto_all] color rules exclude every built-in color");
+            IslandConfirmDialog.Show(this, "当前颜色规则没有留下任何可填颜色，请先打开颜色管理进行调整。", "提示", false);
+            return;
+        }
+        Logger.Debug($"[auto_all] palette={htmlColors.Count} allowed={allowedColors.Count} range={snapshot.recordedRange.Value}");
 
         var workers = ReadScanWorkers();
         _options.ScanWorkers = workers;
@@ -2035,7 +1938,6 @@ public partial class Form1 : Form
         SetOperationControlsEnabled(false);
         HidePreviewOverlay();
 
-        CancelScan();
         CancelAutoAll();
         _autoAllCts = new CancellationTokenSource();
         var token = _autoAllCts.Token;
@@ -2050,7 +1952,8 @@ public partial class Form1 : Form
             try
             {
                 Logger.Debug("[auto_all] scanning...");
-                var groups = ScanMatchingPointsForAllColors(snapshot.recordedRange.Value, htmlColors, token, _state.GetPolygon());
+                // 始终先按完整 63 色色板判色，再应用允许集合。这样被排除色不会因容差而误归到相邻的允许色。
+                var groups = ScanMatchingPointsForAllColors(snapshot.recordedRange.Value, htmlColors, allowedColors, token, _state.GetPolygon());
                 Logger.Debug($"[auto_all] scan returned groups={groups.Count} cancelled={token.IsCancellationRequested}");
                 if (token.IsCancellationRequested) return;
 
@@ -2062,16 +1965,13 @@ public partial class Form1 : Form
                     _autoAllProgressTotal = totalPoints;
                     _autoAllProgressStart = DateTime.Now;
                     _autoAllProgressActive = true;
-                    if (_layoutMode != UiLayoutMode.Horizontal)
-                    {
-                        progressAutoAll.Maximum = totalPoints;
-                        progressAutoAll.Value = 0;
-                        labelAutoAllValue.Text = $"0 / {totalPoints}";
-                    }
+                    progressAutoAll.Maximum = Math.Max(1, totalPoints);
+                    progressAutoAll.Value = 0;
+                    labelAutoAllValue.Text = $"0 / {totalPoints}";
                 }));
 
                 Logger.Debug($"[auto_all] executing fill for {totalPoints} points...");
-                ExecuteAutoFillAll(groups, htmlColors, token);
+                ExecuteAutoFillAll(groups, allowedColors, token);
                 Logger.Debug("[auto_all] ExecuteAutoFillAll completed");
             }
             catch (Exception ex)
@@ -2236,7 +2136,7 @@ public partial class Form1 : Form
     /// 遗漏点检测主流程：扫描建图 → 孤岛判定 → 标注为待处理点 → 弹窗确认 → 复用全自动填涂补涂。
     /// 在后台 Task 中运行，所有 UI 操作通过 BeginInvoke 切回 UI 线程。
     /// </summary>
-    private void RunIslandDetection(Rectangle rect, CancellationToken token, List<Point>? polygon = null)
+    private void RunIslandDetection(Rectangle rect, List<BgrColor> allowedColors, CancellationToken token, List<Point>? polygon = null)
     {
         Logger.Debug("[island] RunIslandDetection start");
         var targets = GetPredefinedColors();
@@ -2254,7 +2154,7 @@ public partial class Form1 : Form
         }
 
         // 2) 孤岛判定：小簇 + 护城河 + 外围同色大簇
-        var islands = IslandDetector.Detect(
+        var detectedIslands = IslandDetector.Detect(
             labeled,
             rect,
             _options.ScanStep,
@@ -2264,8 +2164,10 @@ public partial class Form1 : Form
             _options.IslandSearchRadius,
             _options.IslandMinOuterMultiplier,
             _options.IslandStrongMoatRatio);
+        var allowedSet = new HashSet<BgrColor>(allowedColors);
+        var islands = detectedIslands.Where(island => allowedSet.Contains(island.Color)).ToList();
         int totalMissed = islands.Sum(i => i.Points.Count);
-        Logger.Debug($"[island] islands={islands.Count} totalMissed={totalMissed}");
+        Logger.Debug($"[island] detected={detectedIslands.Count} allowed={islands.Count} totalMissed={totalMissed}");
 
         // 诊断：无论是否找到遗漏点，都输出网格分布，用于定位“测不出”根因
         if (_options.IslandDiagnose)
@@ -2279,7 +2181,7 @@ public partial class Form1 : Form
             if (islands.Count == 0 || totalMissed == 0)
             {
                 Logger.Debug("[island] no missed points found");
-                var msg = "未检测到遗漏点。\n\n诊断信息：\n" + diag;
+                var msg = "当前颜色规则下未检测到遗漏点。\n\n诊断信息：\n" + diag;
                 BeginInvoke((Action)(() => IslandConfirmDialog.Show(this, msg, "遗漏检测", false)));
                 return;
             }
@@ -2287,7 +2189,7 @@ public partial class Form1 : Form
         else if (islands.Count == 0 || totalMissed == 0)
         {
             Logger.Debug("[island] no missed points found");
-            BeginInvoke((Action)(() => IslandConfirmDialog.Show(this, "未检测到遗漏点", "遗漏检测", false)));
+            BeginInvoke((Action)(() => IslandConfirmDialog.Show(this, "当前颜色规则下未检测到遗漏点", "遗漏检测", false)));
             return;
         }
 
@@ -2364,6 +2266,13 @@ public partial class Form1 : Form
             IslandConfirmDialog.Show(this, "请框选范围", "提示", false);
             return;
         }
+        var allowedColors = _colorRules.GetEffectiveColors();
+        if (allowedColors.Count == 0)
+        {
+            Logger.Debug("[island] color rules exclude every built-in color");
+            IslandConfirmDialog.Show(this, "当前颜色规则没有留下任何可处理颜色，请先打开颜色管理进行调整。", "提示", false);
+            return;
+        }
 
         if (!_settings.SkipIslandRecommendation)
         {
@@ -2399,18 +2308,21 @@ public partial class Form1 : Form
         SetOperationControlsEnabled(false);
         HidePreviewOverlay();
 
-        CancelScan();
         CancelAutoAll();
         _islandCts?.Dispose();
         _islandCts = new CancellationTokenSource();
         var token = _islandCts.Token;
+        _autoAllProgressCurrent = 0;
+        _autoAllProgressTotal = 0;
+        _autoAllProgressStart = DateTime.Now;
+        _autoAllProgressActive = true;
         Logger.Debug("[island] starting detection task...");
 
         Task.Run(() =>
         {
             try
             {
-                RunIslandDetection(snapshot.recordedRange.Value, token, _state.GetPolygon());
+                RunIslandDetection(snapshot.recordedRange.Value, allowedColors, token, _state.GetPolygon());
             }
             catch (Exception ex)
             {
@@ -2420,6 +2332,7 @@ public partial class Form1 : Form
             {
                 BeginInvoke((Action)(() =>
                 {
+                    _autoAllProgressActive = false;
                     SetOperationControlsEnabled(true);
                     RestorePreviewOverlayIfChecked();
                     var cts = Interlocked.Exchange(ref _islandCts, null);
@@ -2500,12 +2413,21 @@ public partial class Form1 : Form
         };
     }
 
-    private Dictionary<BgrColor, List<Point>> ScanMatchingPointsForAllColors(Rectangle rect, List<BgrColor> targets, CancellationToken token, List<Point>? polygon = null)
+    private Dictionary<BgrColor, List<Point>> ScanMatchingPointsForAllColors(
+        Rectangle rect,
+        List<BgrColor> targets,
+        List<BgrColor> allowedTargets,
+        CancellationToken token,
+        List<Point>? polygon = null)
     {
         var poly = polygon != null && polygon.Count >= 3 ? new OrthogonalPolygon(polygon) : null;
-        Logger.Debug($"[scan_all] ScanMatchingPointsForAllColors rect={rect} targets={targets.Count}");
+        Logger.Debug($"[scan_all] ScanMatchingPointsForAllColors rect={rect} palette={targets.Count} allowed={allowedTargets.Count}");
+        var allowedSet = new HashSet<BgrColor>(allowedTargets);
         var groups = new ConcurrentDictionary<BgrColor, ConcurrentBag<Point>>();
-        foreach(var c in targets) groups[c] = new ConcurrentBag<Point>();
+        foreach (var color in allowedTargets)
+        {
+            groups[color] = new ConcurrentBag<Point>();
+        }
 
         int width = Math.Max(1, rect.Width);
         int height = Math.Max(1, rect.Height);
@@ -2565,7 +2487,7 @@ public partial class Form1 : Form
                     }
                 }
 
-                if (bestTarget.HasValue && localMin <= _options.ColorTol)
+                if (bestTarget.HasValue && localMin <= _options.ColorTol && allowedSet.Contains(bestTarget.Value))
                 {
                     groups[bestTarget.Value].Add(new Point(rect.Left + x, rect.Top + y));
                 }
@@ -2602,6 +2524,16 @@ public partial class Form1 : Form
         _autoFillAllStartTime = DateTime.Now;
         int total = groups.Values.Sum(l => l.Count);
         int processed = 0;
+        BeginInvoke((Action)(() =>
+        {
+            _autoAllProgressCurrent = 0;
+            _autoAllProgressTotal = total;
+            _autoAllProgressStart = _autoFillAllStartTime;
+            _autoAllProgressActive = total > 0;
+            progressAutoAll.Maximum = Math.Max(1, total);
+            progressAutoAll.Value = 0;
+            labelAutoAllValue.Text = $"0 / {total}";
+        }));
         var orderedColors = order
             .Where(IsWhite)
             .Concat(order.Where(color => !IsWhite(color)))
@@ -2775,12 +2707,9 @@ public partial class Form1 : Form
                 _autoAllProgressTotal = total;
                 _autoAllProgressStart = _autoFillAllStartTime;
                 _autoAllProgressActive = current < total;
-                if (_layoutMode != UiLayoutMode.Horizontal)
-                {
-                    progressAutoAll.Maximum = total;
-                    progressAutoAll.Value = Math.Min(current, total);
-                    labelAutoAllValue.Text = $"{current} / {total}{GetEta(_autoFillAllStartTime, current, total)}";
-                }
+                progressAutoAll.Maximum = Math.Max(1, total);
+                progressAutoAll.Value = Math.Min(current, progressAutoAll.Maximum);
+                labelAutoAllValue.Text = $"{current} / {total}{GetEta(_autoFillAllStartTime, current, total)}";
             }));
         }
     }
@@ -2837,98 +2766,76 @@ public partial class Form1 : Form
             labelRec.Location = P(4, 4);
             _compactDivider1.Width = S(2);
             _compactDivider2.Width = S(2);
+            _colorManagerButton.Visible = true;
 
             if (mode == UiLayoutMode.Vertical)
             {
-                ClientSize = Z(383, 630);
+                ClientSize = Z(383, 505);
                 _compactDivider1.Visible = false;
                 _compactDivider2.Visible = false;
                 color1.Visible = true;
                 color2.Visible = true;
-                label1.Visible = true;
-                label2.Visible = true;
-                label4.Visible = true;
-                label5.Visible = true;
-                label6.Visible = true;
-                label8.Visible = true;
-                label10.Visible = true;
+                label1.Visible = false;
+                label2.Visible = false;
+                label4.Visible = false;
+                label5.Visible = false;
+                label6.Visible = false;
+                label8.Visible = false;
+                label10.Visible = false;
                 TheRange.Visible = true;
-                labelScan.Visible = true;
-                labelScanValue.Visible = true;
-                progressScan.Visible = true;
-                labelMatchProgress.Visible = true;
-                labelMatchValue.Visible = true;
-                progressMatch.Visible = true;
                 checkShowRange.Visible = true;
                 panelLeft.Location = P(12, 56);
-                panelLeft.Size = Z(108, 44);
-                panelRight.Location = P(133, 56);
-                panelRight.Size = Z(106, 44);
+                panelLeft.Size = Z(80, 30);
+                panelRight.Location = P(198, 56);
+                panelRight.Size = Z(80, 30);
                 labelCores.Text = "调用CPU数量";
                 btnAutoCores.Text = "自动决定CPU数量";
                 label7.Text = "扫描步长";
                 btnRange.Text = "划取检测范围";
-                btnFill.Text = "自动检测及填充";
                 btnAutoFillAll.Text = "全自动检测及填充";
-                labelAutoAll.Text = "全自动填充进度";
                 color1.Location = P(12, 34);
-                color2.Location = P(133, 34);
-                label1.Location = P(245, 56);
-                label2.Location = P(224, 227);
+                color2.Location = P(198, 34);
                 label3.Location = P(12, 8);
-                label4.Location = P(303, 131);
-                label5.Location = P(252, 163);
-                label6.Location = P(12, 108);
-                labelCores.Location = P(12, 131);
-                textCores.Location = P(119, 128);
+                _colorManagerButton.Location = P(12, 94);
+                _colorManagerButton.Size = Z(351, 38);
+                labelCores.Location = P(12, 145);
+                textCores.Location = P(119, 142);
                 textCores.Size = Z(40, 27);
-                btnAutoCores.Location = P(10, 160);
+                btnAutoCores.Location = P(10, 176);
                 btnAutoCores.Size = Z(142, 26);
-                label7.Location = P(14, 194);
-                ScanStep.Location = P(89, 191);
+                label7.Location = P(14, 210);
+                ScanStep.Location = P(89, 207);
                 ScanStep.Size = Z(69, 27);
-                label8.Location = P(176, 194);
-                btnRange.Location = P(12, 224);
+                btnRange.Location = P(12, 242);
                 btnRange.Size = Z(122, 26);
-                RangeRecord.Location = P(12, 256);
-                TheRange.Location = P(113, 256);
-                checkShowRange.Location = P(12, 278);
-                btnFill.Location = P(12, 310);
-                btnFill.Size = Z(122, 26);
-                label10.Location = P(167, 313);
-                labelScan.Location = P(14, 344);
-                labelScanValue.Location = P(160, 344);
-                progressScan.Location = P(14, 366);
-                progressScan.Size = Z(351, 24);
-                labelMatchProgress.Location = P(17, 400);
-                labelMatchValue.Location = P(160, 400);
-                progressMatch.Location = P(12, 422);
-                progressMatch.Size = Z(351, 24);
-                btnAutoFillAll.Location = P(12, 458);
+                RangeRecord.Location = P(12, 274);
+                TheRange.Location = P(113, 274);
+                checkShowRange.Location = P(12, 296);
+                btnAutoFillAll.Location = P(12, 330);
                 btnAutoFillAll.Size = Z(160, 26);
                 radioSpeedBalanced.Text = "平衡";
-                radioSpeedBalanced.Location = P(178, 461);
+                radioSpeedBalanced.Location = P(178, 333);
                 radioSpeedExtreme.Text = "极致速度";
-                radioSpeedExtreme.Location = P(252, 461);
+                radioSpeedExtreme.Location = P(252, 333);
                 radioSpeedBalanced.Visible = true;
                 radioSpeedExtreme.Visible = true;
-                labelAutoAll.Location = P(17, 491);
-                labelAutoAllValue.Location = P(160, 491);
-                progressAutoAll.Location = P(12, 513);
-                progressAutoAll.Size = Z(351, 24);
                 btnRunIslandDetect.Text = "运行遗漏检测";
-                btnRunIslandDetect.Location = P(12, 548);
+                btnRunIslandDetect.Location = P(12, 364);
                 btnRunIslandDetect.Size = Z(160, 26);
                 btnRunIslandDetect.Visible = true;
-                btnToggleLayout.Location = P(178, 548);
+                btnToggleLayout.Location = P(178, 364);
                 btnToggleLayout.Size = Z(145, 26);
-                labelCurrentVersion.Location = P(12, 581);
-                linkGithubOrUpdate.Location = P(12, 603);
+                labelAutoAll.Location = P(17, 399);
+                labelAutoAllValue.Location = P(128, 399);
+                progressAutoAll.Location = P(12, 421);
+                progressAutoAll.Size = Z(351, 24);
+                labelCurrentVersion.Location = P(12, 454);
+                linkGithubOrUpdate.Location = P(12, 476);
                 btnToggleLayout.Text = "切换为精简布局";
             }
             else
             {
-                ClientSize = Z(700, 180);
+                ClientSize = Z(CompactLayoutWidth, CompactLayoutHeight);
                 _compactDivider1.Visible = true;
                 _compactDivider2.Visible = false;
                 color1.Visible = false;
@@ -2941,21 +2848,17 @@ public partial class Form1 : Form
                 label8.Visible = false;
                 label10.Visible = false;
                 TheRange.Visible = false;
-                labelScan.Visible = false;
-                labelScanValue.Visible = false;
-                progressScan.Visible = false;
-                labelMatchProgress.Visible = false;
-                labelMatchValue.Visible = false;
-                progressMatch.Visible = false;
 
                 // 区域1：颜色/CPU/步长/划取
                 label3.Location = P(10, 8);
-                panelLeft.Location = P(10, 56);
-                panelLeft.Size = Z(108, 50);
-                panelRight.Location = P(128, 56);
-                panelRight.Size = Z(106, 50);
+                panelLeft.Location = P(10, 39);
+                panelLeft.Size = Z(48, 24);
+                panelRight.Location = P(68, 39);
+                panelRight.Size = Z(48, 24);
                 color1.Location = P(10, 33);
                 color2.Location = P(128, 33);
+                _colorManagerButton.Location = P(10, 72);
+                _colorManagerButton.Size = Z(224, 34);
 
                 labelCores.Text = "cpu";
                 labelCores.Location = P(248, 32);
@@ -2978,40 +2881,37 @@ public partial class Form1 : Form
                 checkShowRange.Visible = true;
 
                 // 区域2：动作按钮 + 进度
-                btnFill.Text = "自动";
-                btnFill.Location = P(430, 20);
-                btnFill.Size = Z(58, 26);
-
                 btnAutoFillAll.Text = "全自动";
-                btnAutoFillAll.Location = P(494, 20);
-                btnAutoFillAll.Size = Z(76, 26);
+                btnAutoFillAll.Location = P(430, 20);
+                btnAutoFillAll.Size = Z(100, 26);
                 radioSpeedBalanced.Text = "平衡";
-                radioSpeedBalanced.Location = P(430, 108);
+                radioSpeedBalanced.Location = P(430, 54);
                 radioSpeedExtreme.Text = "极致";
-                radioSpeedExtreme.Location = P(492, 108);
+                radioSpeedExtreme.Location = P(492, 54);
                 radioSpeedBalanced.Visible = true;
                 radioSpeedExtreme.Visible = true;
                 btnRunIslandDetect.Text = "遗漏";
-                btnRunIslandDetect.Location = P(574, 20); // 全自动(494,20,w76)右侧
-                btnRunIslandDetect.Size = Z(58, 26);
+                btnRunIslandDetect.Location = P(536, 20);
+                btnRunIslandDetect.Size = Z(76, 26);
                 btnRunIslandDetect.Visible = true;
 
-                labelAutoAll.Text = "总进度";
-                labelAutoAll.Location = P(430, 58);
-                labelAutoAllValue.Location = P(500, 58);
-                progressAutoAll.Location = P(430, 82);
-                progressAutoAll.Size = Z(250, 22);
+                labelAutoAll.Location = P(430, 82);
+                labelAutoAllValue.Location = P(500, 82);
+                progressAutoAll.Location = P(430, 106);
+                progressAutoAll.Size = Z(CompactLayoutWidth - 450, 22);
 
                 // 区域1底部：入口
                 labelCurrentVersion.Location = P(10, 124);
                 linkGithubOrUpdate.Location = P(10, 146);
-                btnToggleLayout.Location = P(548, 142);
+                btnToggleLayout.Location = P(CompactLayoutWidth - 152, CompactLayoutHeight - 38);
                 btnToggleLayout.Size = Z(145, 26);
                 btnToggleLayout.Text = "切换为完整布局";
 
                 _compactDivider1.Location = P(410, 16);
-                _compactDivider1.Height = S(140);
+                _compactDivider1.Height = S(CompactLayoutHeight - 40);
             }
+
+            LayoutColorManagementUi();
         }
         finally
         {
@@ -3229,16 +3129,6 @@ public partial class Form1 : Form
         }
 
         private void label3_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void labelMatchProgress_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void labelMatchValue_Click(object sender, EventArgs e)
         {
 
         }

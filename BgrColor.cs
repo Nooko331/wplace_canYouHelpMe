@@ -4,7 +4,7 @@ using System.Drawing;
 namespace WplaceColorWatch
 {
 
-public readonly struct BgrColor
+public readonly struct BgrColor : IEquatable<BgrColor>
 {
     public readonly byte B;
     public readonly byte G;
@@ -38,6 +38,31 @@ public readonly struct BgrColor
     public int[] ToRgbArray()
     {
         return new[] { (int)R, (int)G, (int)B };
+    }
+
+    public bool Equals(BgrColor other)
+    {
+        return B == other.B && G == other.G && R == other.R;
+    }
+
+    public override bool Equals(object? obj)
+    {
+        return obj is BgrColor other && Equals(other);
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(B, G, R);
+    }
+
+    public static bool operator ==(BgrColor left, BgrColor right)
+    {
+        return left.Equals(right);
+    }
+
+    public static bool operator !=(BgrColor left, BgrColor right)
+    {
+        return !left.Equals(right);
     }
 }
 }

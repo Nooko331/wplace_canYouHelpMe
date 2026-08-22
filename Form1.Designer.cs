@@ -18,13 +18,6 @@ partial class Form1
     private System.Windows.Forms.Label RangeRecord;
     private System.Windows.Forms.CheckBox checkShowRange;
     private System.Windows.Forms.Button btnRange;
-    private System.Windows.Forms.Button btnFill;
-    private System.Windows.Forms.Label labelScan;
-    private System.Windows.Forms.ProgressBar progressScan;
-    private System.Windows.Forms.Label labelScanValue;
-    private System.Windows.Forms.Label labelMatchProgress;
-    private System.Windows.Forms.ProgressBar progressMatch;
-    private System.Windows.Forms.Label labelMatchValue;
     private System.Windows.Forms.Label labelCores;
     private System.Windows.Forms.TextBox textCores;
     private System.Windows.Forms.Button btnAutoCores;
@@ -65,13 +58,6 @@ partial class Form1
             this.RangeRecord = new System.Windows.Forms.Label();
             this.checkShowRange = new System.Windows.Forms.CheckBox();
             this.btnRange = new System.Windows.Forms.Button();
-            this.btnFill = new System.Windows.Forms.Button();
-            this.labelScan = new System.Windows.Forms.Label();
-            this.progressScan = new System.Windows.Forms.ProgressBar();
-            this.labelScanValue = new System.Windows.Forms.Label();
-            this.labelMatchProgress = new System.Windows.Forms.Label();
-            this.progressMatch = new System.Windows.Forms.ProgressBar();
-            this.labelMatchValue = new System.Windows.Forms.Label();
             this.labelCores = new System.Windows.Forms.Label();
             this.textCores = new System.Windows.Forms.TextBox();
             this.btnAutoCores = new System.Windows.Forms.Button();
@@ -156,67 +142,6 @@ partial class Form1
             this.btnRange.Text = "划取检测范围";
             this.btnRange.UseVisualStyleBackColor = true;
             this.btnRange.Click += new System.EventHandler(this.btnRange_Click);
-            // 
-            // btnFill
-            // 
-            this.btnFill.Location = new System.Drawing.Point(12, 341);
-            this.btnFill.Name = "btnFill";
-            this.btnFill.Size = new System.Drawing.Size(89, 26);
-            this.btnFill.TabIndex = 9;
-            this.btnFill.Text = "自动填充";
-            this.btnFill.UseVisualStyleBackColor = true;
-            // 
-            // labelScan
-            // 
-            this.labelScan.AutoSize = true;
-            this.labelScan.Location = new System.Drawing.Point(14, 382);
-            this.labelScan.Name = "labelScan";
-            this.labelScan.Size = new System.Drawing.Size(144, 20);
-            this.labelScan.TabIndex = 8;
-            this.labelScan.Text = "全部检测点扫描进度";
-            // 
-            // progressScan
-            // 
-            this.progressScan.Location = new System.Drawing.Point(14, 405);
-            this.progressScan.Name = "progressScan";
-            this.progressScan.Size = new System.Drawing.Size(351, 28);
-            this.progressScan.TabIndex = 7;
-            // 
-            // labelScanValue
-            // 
-            this.labelScanValue.AutoSize = true;
-            this.labelScanValue.Location = new System.Drawing.Point(160, 382);
-            this.labelScanValue.Name = "labelScanValue";
-            this.labelScanValue.Size = new System.Drawing.Size(41, 20);
-            this.labelScanValue.TabIndex = 6;
-            this.labelScanValue.Text = "0 / 0";
-            // 
-            // labelMatchProgress
-            // 
-            this.labelMatchProgress.AutoSize = true;
-            this.labelMatchProgress.Location = new System.Drawing.Point(17, 456);
-            this.labelMatchProgress.Name = "labelMatchProgress";
-            this.labelMatchProgress.Size = new System.Drawing.Size(144, 20);
-            this.labelMatchProgress.TabIndex = 5;
-            this.labelMatchProgress.Text = "匹配检测点扫描进度";
-            this.labelMatchProgress.Click += new System.EventHandler(this.labelMatchProgress_Click);
-            // 
-            // progressMatch
-            // 
-            this.progressMatch.Location = new System.Drawing.Point(12, 479);
-            this.progressMatch.Name = "progressMatch";
-            this.progressMatch.Size = new System.Drawing.Size(351, 28);
-            this.progressMatch.TabIndex = 4;
-            // 
-            // labelMatchValue
-            // 
-            this.labelMatchValue.AutoSize = true;
-            this.labelMatchValue.Location = new System.Drawing.Point(160, 456);
-            this.labelMatchValue.Name = "labelMatchValue";
-            this.labelMatchValue.Size = new System.Drawing.Size(41, 20);
-            this.labelMatchValue.TabIndex = 3;
-            this.labelMatchValue.Text = "0 / 0";
-            this.labelMatchValue.Click += new System.EventHandler(this.labelMatchValue_Click);
             // 
             // labelCores
             // 
@@ -454,13 +379,6 @@ partial class Form1
             this.Controls.Add(this.btnAutoCores);
             this.Controls.Add(this.textCores);
             this.Controls.Add(this.labelCores);
-            this.Controls.Add(this.labelMatchValue);
-            this.Controls.Add(this.progressMatch);
-            this.Controls.Add(this.labelMatchProgress);
-            this.Controls.Add(this.labelScanValue);
-            this.Controls.Add(this.progressScan);
-            this.Controls.Add(this.labelScan);
-            this.Controls.Add(this.btnFill);
             this.Controls.Add(this.btnRange);
             this.Controls.Add(this.checkShowRange);
             this.Controls.Add(this.RangeRecord);
