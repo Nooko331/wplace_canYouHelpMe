@@ -111,6 +111,9 @@ namespace WplaceColorWatch
         [DllImport("gdi32.dll")]
         public static extern uint GetPixel(IntPtr hdc, int nXPos, int nYPos);
 
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmFlush();
+
         [DllImport("user32.dll", SetLastError = true)]
         public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 

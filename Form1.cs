@@ -692,8 +692,7 @@ public partial class Form1 : Form
         _previewOverlay.SetData(rect, points, 0, poly);
         if (!_previewOverlay.Visible)
         {
-            _previewOverlay.Show(this);
-            Logger.Debug($"[overlay] RefreshRangePreview: showing overlay with {points.Count} points");
+            ShowPreviewOverlayIfAllowed();
         }
     }
 
@@ -714,6 +713,11 @@ public partial class Form1 : Form
 
     private void HidePreviewOverlay()
     {
+        if (InvokeRequired)
+        {
+            Invoke((Action)HidePreviewOverlay);
+            return;
+        }
         if (_previewOverlay != null && _previewOverlay.Visible)
         {
             Logger.Debug($"[overlay] HidePreviewOverlay visible={_previewOverlay.Visible}");
@@ -737,6 +741,13 @@ public partial class Form1 : Form
         DateTime scanStartTime, DateTime autoFillStartTime,
         List<Point> previewPoints, bool previewReady) snapshot)
     {
+        // A worker can be waiting for the clear sample while this timer ticks.
+        // Preserve the fill state, but never re-show our markers during capture.
+        if (IsPreviewOverlaySuppressed)
+        {
+            HidePreviewOverlay();
+            return;
+        }
         if (!checkShowRange.Checked)
         {
             // 未勾选显示，隐藏覆盖层
@@ -771,12 +782,12 @@ public partial class Form1 : Form
         var poly = _state.GetPolygon();
 
         // 全自动：由 ExecuteAutoFillAll 直接维护覆盖层，这里只负责保持显示
-        if (_overlayFillIsFullAuto)
+        if (_overlayFillMode && _overlayFillIsFullAuto)
         {
             if (_previewOverlay != null && _overlayFillMode && !_previewOverlay.Visible)
             {
                 Logger.Debug("[overlay] UpdateOverlayFromState: full-auto fill, re-showing overlay");
-                _previewOverlay.Show(this);
+                ShowPreviewOverlayIfAllowed();
             }
             return;
         }
@@ -799,7 +810,7 @@ public partial class Form1 : Form
             else if (!_previewOverlay.Visible)
             {
                 Logger.Debug("[overlay] UpdateOverlayFromState: showing preview overlay");
-                _previewOverlay.Show(this);
+                ShowPreviewOverlayIfAllowed();
             }
             return;
         }
@@ -857,12 +868,11 @@ public partial class Form1 : Form
             Logger.Debug("[overlay] EnsureOverlay: creating new overlay form");
             _previewOverlay = new PreviewOverlayForm();
         }
-        if (!_previewOverlay.Visible)
+        ShowPreviewOverlayIfAllowed();
+        if (_previewOverlay.Visible)
         {
-            Logger.Debug("[overlay] EnsureOverlay: showing overlay");
-            _previewOverlay.Show(this);
+            _previewOverlay.BringToFront();
         }
-        _previewOverlay.BringToFront();
         return _previewOverlay;
     }
 
@@ -898,10 +908,7 @@ public partial class Form1 : Form
         }
 
         using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-        using (var g = Graphics.FromImage(bitmap))
-        {
-            g.CopyFromScreen(rect.Left, rect.Top, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
-        }
+        CopyScreenRegion(bitmap, rect.Location);
 
         var bitmapRect = new Rectangle(0, 0, width, height);
         var data = bitmap.LockBits(bitmapRect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
@@ -1579,6 +1586,7 @@ public partial class Form1 : Form
 
     private void CleanupResources()
     {
+        _closing = true;
         // 关闭时持久化用户设置（吞掉异常，绝不影响关闭流程）
         SaveUserSettings();
         _startupActivationTimer?.Stop();
@@ -1691,8 +1699,7 @@ public partial class Form1 : Form
     private (BgrColor hover, BgrColor clear, bool stable, int waitMs, int reads, bool changedFromHover) CaptureColorSamples(Point samplePosition)
     {
         Logger.Debug($"[record] CaptureColorSamples start pos=({samplePosition.X},{samplePosition.Y})");
-        // 取色前隐藏覆盖层，避免读到覆盖层的颜色
-        HidePreviewOverlay();
+        using var capture = BeginScreenCapture();
         try
         {
             BgrColor hover;
@@ -1770,6 +1777,8 @@ public partial class Form1 : Form
     private (BgrColor hover, BgrColor clear) PerformColorRecordAndAction(Point samplePosition)
     {
         Logger.Debug("[record] PerformColorRecordAndAction start");
+        // Keep markers hidden through focusing the target and sending I/click.
+        using var capture = BeginScreenCapture();
         var recorded = CaptureColorSamples(samplePosition);
         FocusTargetUnderCursor();
         Logger.Debug("[action] send key I");
@@ -2016,10 +2025,7 @@ public partial class Form1 : Form
         long lastProgressTicks = Environment.TickCount64;
 
         using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-        using (var g = Graphics.FromImage(bitmap))
-        {
-            g.CopyFromScreen(rect.Left, rect.Top, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
-        }
+        CopyScreenRegion(bitmap, rect.Location);
 
         var bitmapRect = new Rectangle(0, 0, width, height);
         var data = bitmap.LockBits(bitmapRect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
@@ -2357,10 +2363,7 @@ public partial class Form1 : Form
         long lastProgressTicks = Environment.TickCount64;
         
         using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-        using (var g = Graphics.FromImage(bitmap))
-        {
-            g.CopyFromScreen(rect.Left, rect.Top, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
-        }
+        CopyScreenRegion(bitmap, rect.Location);
 
         var bitmapRect = new Rectangle(0, 0, width, height);
         var data = bitmap.LockBits(bitmapRect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
