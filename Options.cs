@@ -7,7 +7,7 @@
         public bool Debug { get; set; }
         // UI/检测刷新间隔（毫秒）
         public int IntervalMs { get; set; } = 100;
-        // 颜色匹配容差（0 表示完全一致）
+        // 原色色板匹配容差（0 表示完全一致）；半透明显示色只接受内置计算值及半整数取整
         public int ColorTol { get; set; } = 0;
         // 触发动作的冷却时间（毫秒）
         public int CooldownMs { get; set; } = 15;

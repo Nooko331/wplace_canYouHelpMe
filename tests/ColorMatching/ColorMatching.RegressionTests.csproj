@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../BgrColor.cs" Link="BgrColor.cs" />
+    <Compile Include="../../PaletteColorMatcher.cs" Link="PaletteColorMatcher.cs" />
+    <Compile Include="../../ColorRuleSet.cs" Link="ColorRuleSet.cs" />
+  </ItemGroup>
+</Project>

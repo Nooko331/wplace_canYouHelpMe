@@ -285,19 +285,7 @@ public partial class Form1
 
     private (BgrColor color, int diff) NormalizePaletteColor(BgrColor sample)
     {
-        var palette = GetPredefinedColors();
-        var best = palette[0];
-        int minDiff = int.MaxValue;
-        foreach (var color in palette)
-        {
-            int diff = sample.MaxDiff(color);
-            if (diff < minDiff)
-            {
-                minDiff = diff;
-                best = color;
-            }
-        }
-        return (best, minDiff);
+        return PaletteColorMatcher.FindNearest(sample);
     }
 
     private void RefreshColorRuleUi()

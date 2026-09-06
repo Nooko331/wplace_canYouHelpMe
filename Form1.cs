@@ -553,8 +553,13 @@ public partial class Form1 : Form
         return bgr.R == Color.White.R && bgr.G == Color.White.G && bgr.B == Color.White.B;
     }
 
+    private bool IsWhiteSample(BgrColor sample)
+    {
+        return PaletteColorMatcher.TryMatch(sample, _options.ColorTol, out var color) && IsWhite(color);
+    }
+
     /// <summary>
-    /// 判断取色样本是否命中本次自动化运行中已经取过的颜色（容差 = ColorTol）。
+    /// 将原色/半透明显示色归回完整色板后，再判断是否命中已取过的颜色（容差 = ColorTol）。
     /// 用于多色全自动填涂时跳过“取到旧笔色”的异常点，避免用旧笔色覆盖当前色组。
     /// </summary>
     private bool IsColorAlreadyPicked(BgrColor sample, HashSet<BgrColor> pickedColors)
@@ -563,15 +568,8 @@ public partial class Form1 : Form
         {
             return false;
         }
-        int tol = _options.ColorTol;
-        foreach (var c in pickedColors)
-        {
-            if (sample.MaxDiff(c) <= tol)
-            {
-                return true;
-            }
-        }
-        return false;
+        return PaletteColorMatcher.TryMatch(sample, _options.ColorTol, out var color) &&
+            pickedColors.Contains(color);
     }
 
     private static string FormatBgrs(List<BgrColor> bgrs)
@@ -1948,8 +1946,8 @@ public partial class Form1 : Form
             try
             {
                 Logger.Debug("[auto_all] scanning...");
-                // 始终先按完整 63 色色板判色，再应用允许集合。这样被排除色不会因容差而误归到相邻的允许色。
-                var groups = ScanMatchingPointsForAllColors(snapshot.recordedRange.Value, htmlColors, allowedColors, token, _state.GetPolygon());
+                // 原色和半透明显示色先归回完整 63 色色板，再应用允许集合。
+                var groups = ScanMatchingPointsForAllColors(snapshot.recordedRange.Value, allowedColors, token, _state.GetPolygon());
                 Logger.Debug($"[auto_all] scan returned groups={groups.Count} cancelled={token.IsCancellationRequested}");
                 if (token.IsCancellationRequested) return;
 
@@ -2003,10 +2001,10 @@ public partial class Form1 : Form
     /// 必须包含所有采样点（含未匹配），孤岛检测的护城河判定依赖“采样了但没匹配”的点。
     /// 用 (col,row) 六边形坐标作 key，与 ScanPattern 的品字形采样严格对应。
     /// </summary>
-    private Dictionary<long, BgrColor?> ScanLabeledGrid(Rectangle rect, List<BgrColor> targets, CancellationToken token, List<Point>? polygon = null)
+    private Dictionary<long, BgrColor?> ScanLabeledGrid(Rectangle rect, CancellationToken token, List<Point>? polygon = null)
     {
         var poly = polygon != null && polygon.Count >= 3 ? new OrthogonalPolygon(polygon) : null;
-        Logger.Debug($"[scan_island] ScanLabeledGrid rect={rect} targets={targets.Count} tol={_options.IslandColorTol}(island) step={_options.ScanStep} workers={_options.ScanWorkers}");
+        Logger.Debug($"[scan_island] ScanLabeledGrid rect={rect} targets={PaletteColorMatcher.Colors.Count} displayProfile=half-on-F8F4F0 tol={_options.IslandColorTol}(island) step={_options.ScanStep} workers={_options.ScanWorkers}");
 
         int width = Math.Max(1, rect.Width);
         int height = Math.Max(1, rect.Height);
@@ -2094,18 +2092,8 @@ public partial class Form1 : Form
                             continue;
                         }
                         var bgr = ReadBufferPixel(x, y);
-                        int localMin = int.MaxValue;
-                        BgrColor? bestTarget = null;
-                        foreach (var t in targets)
-                        {
-                            int diff = bgr.MaxDiff(t);
-                            if (diff < localMin)
-                            {
-                                localMin = diff;
-                                bestTarget = t;
-                            }
-                        }
-                        BgrColor? label = (bestTarget.HasValue && localMin <= islandTol) ? bestTarget : null;
+                        BgrColor? label = PaletteColorMatcher.TryMatch(bgr, islandTol, out var matchedColor)
+                            ? matchedColor : null;
                         grid[IslandDetector.ToHexKey(col, row)] = label;
                         if (label.HasValue)
                         {
@@ -2143,7 +2131,7 @@ public partial class Form1 : Form
         }
 
         // 1) 扫描建图
-        var labeled = ScanLabeledGrid(rect, targets, token, polygon);
+        var labeled = ScanLabeledGrid(rect, token, polygon);
         if (token.IsCancellationRequested)
         {
             return;
@@ -2341,83 +2329,17 @@ public partial class Form1 : Form
 
     private List<BgrColor> GetPredefinedColors()
     {
-        return new List<BgrColor>
-        {
-            new BgrColor(0, 0, 0),       // Black
-            new BgrColor(60, 60, 60),    // Dark Gray
-            new BgrColor(120, 120, 120), // Gray
-            new BgrColor(170, 170, 170), // Medium Gray
-            new BgrColor(210, 210, 210), // Light Gray
-            new BgrColor(255, 255, 255), // White
-            new BgrColor(24, 0, 96),     // Deep Red (BGR: 24, 0, 96) -> RGB: 96, 0, 24
-            new BgrColor(30, 14, 165),   // Dark Red (BGR: 30, 14, 165) -> RGB: 165, 14, 30
-            new BgrColor(36, 28, 237),   // Red (BGR: 36, 28, 237) -> RGB: 237, 28, 36
-            new BgrColor(114, 128, 250), // Light Red (BGR: 114, 128, 250) -> RGB: 250, 128, 114
-            new BgrColor(26, 92, 228),   // Dark Orange (BGR: 26, 92, 228) -> RGB: 228, 92, 26
-            new BgrColor(39, 127, 255),  // Orange (BGR: 39, 127, 255) -> RGB: 255, 127, 39
-            new BgrColor(9, 170, 246),   // Gold (BGR: 9, 170, 246) -> RGB: 246, 170, 9
-            new BgrColor(59, 221, 249),  // Yellow (BGR: 59, 221, 249) -> RGB: 249, 221, 59
-            new BgrColor(188, 250, 255), // Light Yellow (BGR: 188, 250, 255) -> RGB: 255, 250, 188
-            new BgrColor(49, 132, 156),  // Dark Goldenrod (BGR: 49, 132, 156) -> RGB: 156, 132, 49
-            new BgrColor(49, 173, 197),  // Goldenrod (BGR: 49, 173, 197) -> RGB: 197, 173, 49
-            new BgrColor(95, 212, 232),  // Light Goldenrod (BGR: 95, 212, 232) -> RGB: 232, 212, 95
-            new BgrColor(58, 107, 74),   // Dark Olive (BGR: 58, 107, 74) -> RGB: 74, 107, 58
-            new BgrColor(74, 148, 90),   // Olive (BGR: 74, 148, 90) -> RGB: 90, 148, 74
-            new BgrColor(115, 197, 132), // Light Olive (BGR: 115, 197, 132) -> RGB: 132, 197, 115
-            new BgrColor(104, 185, 14),  // Dark Green (BGR: 104, 185, 14) -> RGB: 14, 185, 104
-            new BgrColor(123, 230, 19),  // Green (BGR: 123, 230, 19) -> RGB: 19, 230, 123
-            new BgrColor(94, 255, 135),  // Light Green (BGR: 94, 255, 135) -> RGB: 135, 255, 94
-            new BgrColor(110, 129, 12),  // Dark Teal (BGR: 110, 129, 12) -> RGB: 12, 129, 110
-            new BgrColor(166, 174, 16),  // Teal (BGR: 166, 174, 16) -> RGB: 16, 174, 166
-            new BgrColor(190, 225, 19),  // Light Teal (BGR: 190, 225, 19) -> RGB: 19, 225, 190
-            new BgrColor(159, 121, 15),  // Dark Cyan (BGR: 159, 121, 15) -> RGB: 15, 121, 159
-            new BgrColor(242, 247, 96),  // Cyan (BGR: 242, 247, 96) -> RGB: 96, 247, 242
-            new BgrColor(242, 250, 187), // Light Cyan (BGR: 242, 250, 187) -> RGB: 187, 250, 242
-            new BgrColor(158, 80, 40),   // Dark Blue (BGR: 158, 80, 40) -> RGB: 40, 80, 158
-            new BgrColor(228, 147, 64),  // Blue (BGR: 228, 147, 64) -> RGB: 64, 147, 228
-            new BgrColor(255, 199, 125), // Light Blue (BGR: 255, 199, 125) -> RGB: 125, 199, 255
-            new BgrColor(184, 49, 77),   // Dark Indigo (BGR: 184, 49, 77) -> RGB: 77, 49, 184
-            new BgrColor(246, 80, 107),  // Indigo (BGR: 246, 80, 107) -> RGB: 107, 80, 246
-            new BgrColor(251, 177, 153), // Light Indigo (BGR: 251, 177, 153) -> RGB: 153, 177, 251
-            new BgrColor(132, 66, 74),   // Dark Slate Blue (BGR: 132, 66, 74) -> RGB: 74, 66, 132
-            new BgrColor(196, 113, 122), // Slate Blue (BGR: 196, 113, 122) -> RGB: 122, 113, 196
-            new BgrColor(241, 174, 181), // Light Slate Blue (BGR: 241, 174, 181) -> RGB: 181, 174, 241
-            new BgrColor(153, 12, 120),  // Dark Purple (BGR: 153, 12, 120) -> RGB: 120, 12, 153
-            new BgrColor(185, 56, 170),  // Purple (BGR: 185, 56, 170) -> RGB: 170, 56, 185
-            new BgrColor(249, 159, 224), // Light Purple (BGR: 249, 159, 224) -> RGB: 224, 159, 249
-            new BgrColor(122, 0, 203),   // Dark Pink (BGR: 122, 0, 203) -> RGB: 203, 0, 122
-            new BgrColor(128, 31, 236),  // Pink (BGR: 128, 31, 236) -> RGB: 236, 31, 128
-            new BgrColor(169, 141, 243), // Light Pink (BGR: 169, 141, 243) -> RGB: 243, 141, 169
-            new BgrColor(73, 82, 155),   // Dark Peach (BGR: 73, 82, 155) -> RGB: 155, 82, 73
-            new BgrColor(120, 128, 209), // Peach (BGR: 120, 128, 209) -> RGB: 209, 128, 120
-            new BgrColor(164, 182, 250), // Light Peach (BGR: 164, 182, 250) -> RGB: 250, 182, 164
-            new BgrColor(52, 70, 104),   // Dark Brown (BGR: 52, 70, 104) -> RGB: 104, 70, 52
-            new BgrColor(42, 104, 149),  // Brown (BGR: 42, 104, 149) -> RGB: 149, 104, 42
-            new BgrColor(99, 164, 219),  // Light Brown (BGR: 99, 164, 219) -> RGB: 219, 164, 99
-            new BgrColor(82, 99, 123),   // Dark Tan (BGR: 82, 99, 123) -> RGB: 123, 99, 82
-            new BgrColor(107, 132, 156), // Tan (BGR: 107, 132, 156) -> RGB: 156, 132, 107
-            new BgrColor(148, 181, 214), // Light Tan (BGR: 148, 181, 214) -> RGB: 214, 181, 148
-            new BgrColor(81, 128, 209),  // Dark Beige (BGR: 81, 128, 209) -> RGB: 209, 128, 81
-            new BgrColor(119, 178, 248), // Beige (BGR: 119, 178, 248) -> RGB: 248, 178, 119
-            new BgrColor(165, 197, 255), // Light Beige (BGR: 165, 197, 255) -> RGB: 255, 197, 165
-            new BgrColor(63, 100, 109),  // Dark Stone (BGR: 63, 100, 109) -> RGB: 109, 100, 63
-            new BgrColor(107, 140, 148), // Stone (BGR: 107, 140, 148) -> RGB: 148, 140, 107
-            new BgrColor(158, 197, 205), // Light Stone (BGR: 158, 197, 205) -> RGB: 205, 197, 158
-            new BgrColor(65, 57, 51),    // Dark Slate (BGR: 65, 57, 51) -> RGB: 51, 57, 65
-            new BgrColor(141, 117, 109), // Slate (BGR: 141, 117, 109) -> RGB: 109, 117, 141
-            new BgrColor(209, 185, 179)  // Light Slate (BGR: 209, 185, 179) -> RGB: 179, 185, 209
-        };
+        return new List<BgrColor>(PaletteColorMatcher.Colors);
     }
 
     private Dictionary<BgrColor, List<Point>> ScanMatchingPointsForAllColors(
         Rectangle rect,
-        List<BgrColor> targets,
         List<BgrColor> allowedTargets,
         CancellationToken token,
         List<Point>? polygon = null)
     {
         var poly = polygon != null && polygon.Count >= 3 ? new OrthogonalPolygon(polygon) : null;
-        Logger.Debug($"[scan_all] ScanMatchingPointsForAllColors rect={rect} palette={targets.Count} allowed={allowedTargets.Count}");
+        Logger.Debug($"[scan_all] ScanMatchingPointsForAllColors rect={rect} palette={PaletteColorMatcher.Colors.Count} allowed={allowedTargets.Count} displayProfile=half-on-F8F4F0 tol={_options.ColorTol}");
         var allowedSet = new HashSet<BgrColor>(allowedTargets);
         var groups = new ConcurrentDictionary<BgrColor, ConcurrentBag<Point>>();
         foreach (var color in allowedTargets)
@@ -2471,21 +2393,10 @@ public partial class Form1 : Form
                 byte r = buffer[offset + 2];
                 var pixelColor = new BgrColor(b, g, r);
 
-                int localMin = int.MaxValue;
-                BgrColor? bestTarget = null;
-                foreach (var target in targets)
+                if (PaletteColorMatcher.TryMatch(pixelColor, _options.ColorTol, out var matchedColor) &&
+                    allowedSet.Contains(matchedColor))
                 {
-                    int diff = pixelColor.MaxDiff(target);
-                    if (diff < localMin)
-                    {
-                        localMin = diff;
-                        bestTarget = target;
-                    }
-                }
-
-                if (bestTarget.HasValue && localMin <= _options.ColorTol && allowedSet.Contains(bestTarget.Value))
-                {
-                    groups[bestTarget.Value].Add(new Point(rect.Left + x, rect.Top + y));
+                    groups[matchedColor].Add(new Point(rect.Left + x, rect.Top + y));
                 }
             }
             var newDone = Interlocked.Add(ref done, countX);
@@ -2609,7 +2520,7 @@ public partial class Form1 : Form
                     BeginInvoke((Action)(() => SetOverlayFillStartIndex(processed)));
                 }
 
-                if (whiteColorCompleted && !currentColorIsWhite && IsWhite(recorded.clear))
+                if (whiteColorCompleted && !currentColorIsWhite && IsWhiteSample(recorded.clear))
                 {
                     Logger.Debug($"[auto_all] skip white sample while switching color target={FormatBgr(color)} pt=({first.X},{first.Y}) clear={FormatBgr(recorded.clear)}");
                     processed++;
