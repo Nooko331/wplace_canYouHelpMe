@@ -6,8 +6,6 @@ using System.Drawing.Imaging;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.IO;
-using System.Net.Http;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,9 +22,7 @@ public partial class Form1 : Form
         Horizontal
     }
 
-    private const string RepoUrl = "https://github.com/Nooko331/wplace_canYouHelpMe";
-    private const string LatestReleaseApiUrl = "https://api.github.com/repos/Nooko331/wplace_canYouHelpMe/releases/latest";
-    private const string LatestReleaseRedirectUrl = "https://github.com/Nooko331/wplace_canYouHelpMe/releases/latest";
+    private const string RepoUrl = ReleaseUpdateChecker.RepositoryUrl;
     private const int DefaultScanWorkers = 1;
     private const int DefaultScanStep = 10;
     private const int LayoutDesignDpi = 96;
@@ -2939,39 +2935,14 @@ public partial class Form1 : Form
 
     private async Task CheckLatestReleaseAsync()
     {
-        // 更新检测策略（全程静默，不弹任何提示）：
-        // 1) 优先走 GitHub API（原方案）；
-        // 2) API 走不通（如共享 IP 命中 60 次/小时限额返回 403）时，退回 github.com 的 302 重定向，
-        //    从 Location 头解析最新版本号（不受 API 限额限制）；
-        // 3) 两者都拿不到结果时，记录一条 error 日志后返回。
-        string apiError = string.Empty;
-        string redirectError = string.Empty;
-        string? latestTag = null;
-
-        try
-        {
-            latestTag = await TryGetLatestTagViaApiAsync();
-        }
-        catch (Exception ex)
-        {
-            apiError = ex.Message;
-        }
-
+        var result = await ReleaseUpdateChecker.CheckAsync();
+        if (IsDisposed || Disposing) return;
+        var latestTag = result.Tag;
         if (string.IsNullOrEmpty(latestTag))
         {
-            try
-            {
-                latestTag = await TryGetLatestTagViaRedirectAsync();
-            }
-            catch (Exception ex)
-            {
-                redirectError = ex.Message;
-            }
-        }
-
-        if (string.IsNullOrEmpty(latestTag))
-        {
-            Logger.Error($"[update] check failed: api=({apiError}); redirect=({redirectError})");
+            Logger.Warning($"[update] 本次自动检查更新失败，不影响取色和填涂，可稍后手动访问发布页。{result.Failure}");
+            _updateTargetUrl = ReleaseUpdateChecker.LatestReleaseUrl;
+            linkGithubOrUpdate.Text = "暂未检查更新，点击查看发布页";
             return;
         }
 
@@ -2980,71 +2951,9 @@ public partial class Form1 : Form
             return;
         }
 
-        _updateTargetUrl = $"{RepoUrl}/releases/tag/{latestTag}";
+        _updateTargetUrl = $"{RepoUrl}/releases/tag/{Uri.EscapeDataString(latestTag)}";
         linkGithubOrUpdate.Text = $"发现新版本 {latestTag}，点击下载";
         linkGithubOrUpdate.LinkColor = Color.OrangeRed;
-    }
-
-    // 通过 GitHub API 获取最新 release 的 tag。失败时抛异常，由调用方决定是否回退。
-    private async Task<string> TryGetLatestTagViaApiAsync()
-    {
-        using var http = new HttpClient
-        {
-            Timeout = TimeSpan.FromSeconds(6)
-        };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("wplace_canYouHelpMe-update-check");
-        using var response = await http.GetAsync(LatestReleaseApiUrl);
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new HttpRequestException($"api status {(int)response.StatusCode} {response.ReasonPhrase}");
-        }
-
-        await using var stream = await response.Content.ReadAsStreamAsync();
-        using var json = await JsonDocument.ParseAsync(stream);
-        if (!json.RootElement.TryGetProperty("tag_name", out var tagElem))
-        {
-            throw new InvalidOperationException("api response missing tag_name");
-        }
-
-        var tag = tagElem.GetString();
-        if (string.IsNullOrWhiteSpace(tag))
-        {
-            throw new InvalidOperationException("api tag_name empty");
-        }
-
-        return tag;
-    }
-
-    // 通过 github.com 的 302 重定向获取最新 release 的 tag。
-    // /releases/latest 会 302 跳转到 /releases/tag/{tag}（仅指向最新非预发布版本），
-    // 走网页层而非 api.github.com，不受未认证 IP 的 60 次/小时限额限制。
-    private async Task<string> TryGetLatestTagViaRedirectAsync()
-    {
-        using var handler = new HttpClientHandler
-        {
-            AllowAutoRedirect = false
-        };
-        using var http = new HttpClient(handler)
-        {
-            Timeout = TimeSpan.FromSeconds(6)
-        };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("wplace_canYouHelpMe-update-check");
-        using var response = await http.GetAsync(LatestReleaseRedirectUrl);
-
-        var location = response.Headers.Location?.OriginalString;
-        if (string.IsNullOrWhiteSpace(location))
-        {
-            throw new InvalidOperationException($"redirect missing Location (status {(int)response.StatusCode} {response.ReasonPhrase})");
-        }
-
-        // 形如 https://github.com/.../releases/tag/1.2.0，取最后一段作为 tag。
-        var tag = location.TrimEnd('/').Split('/').Last();
-        if (string.IsNullOrWhiteSpace(tag))
-        {
-            throw new InvalidOperationException("redirect Location has no tag segment");
-        }
-
-        return tag;
     }
 
     private static bool TryParseVersion(string? text, out Version version)

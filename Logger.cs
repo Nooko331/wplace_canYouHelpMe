@@ -39,7 +39,17 @@ public static class Logger
 
     public static void Error(string message)
     {
-        var line = FormatLine("ERROR", message);
+        WritePersistent("ERROR", message);
+    }
+
+    public static void Warning(string message)
+    {
+        WritePersistent("WARN", message);
+    }
+
+    private static void WritePersistent(string level, string message)
+    {
+        var line = FormatLine(level, message);
         lock (LockObj)
         {
             try
@@ -137,4 +147,3 @@ public static class Logger
     }
 }
 }
-
