@@ -43,6 +43,19 @@ static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
+        // 发布前预览内置说明，不启动取色、不检查网络，也不修改查看记录。
+        if (Array.IndexOf(args, "--preview-release-notes") >= 0)
+        {
+            string version = typeof(Program).Assembly.GetName().Version!.ToString(3);
+            using var preview = new ReleaseNotesDialog(version, ReleaseNotes.Load())
+            {
+                StartPosition = FormStartPosition.CenterScreen,
+                ShowInTaskbar = true
+            };
+            preview.ShowDialog();
+            return;
+        }
+
         bool createdNew;
         _singleInstanceMutex = new Mutex(true, SingleInstanceMutexName, out createdNew);
         if (!createdNew)

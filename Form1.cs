@@ -68,9 +68,15 @@ public partial class Form1 : Form
     private int _startupActivationAttempts;
 
     public Form1(Options options, uint showMainWindowMessage)
+        : this(options, showMainWindowMessage, new ReleaseNotesHistory())
+    {
+    }
+
+    internal Form1(Options options, uint showMainWindowMessage, ReleaseNotesHistory releaseNotesHistory)
     {
         _options = options;
         _showMainWindowMessage = showMainWindowMessage;
+        _releaseNotesHistory = releaseNotesHistory;
         InitializeComponent();
         _colorRules = new ColorRuleSet(GetPredefinedColors());
         InitializeColorManagementUi();
@@ -109,7 +115,11 @@ public partial class Form1 : Form
         textCores.Text = _options.ScanWorkers.ToString();
         ScanStep.Text = _options.ScanStep.ToString();
         linkGithubOrUpdate.Text = "项目仓库（GitHub）";
-        labelCurrentVersion.Text = $"当前版本: {_currentVersionText}";
+        var versionPrefix = $"当前版本: {_currentVersionText}  ";
+        labelCurrentVersion.Text = versionPrefix + "更新说明";
+        labelCurrentVersion.LinkArea = new LinkArea(versionPrefix.Length, 4);
+        labelCurrentVersion.TabStop = true;
+        labelCurrentVersion.LinkClicked += (_, _) => ShowCurrentReleaseNotes(automatically: false);
         _compactDivider1.Width = 2;
         _compactDivider1.BackColor = Color.Black;
         _compactDivider1.Visible = false;
@@ -159,8 +169,13 @@ public partial class Form1 : Form
         SetHook();
         Shown += (_, _) =>
         {
-            BeginInvoke((Action)EnsureVisibleAndActivated);
-            BeginStartupActivationRetries();
+            BeginInvoke((Action)(() =>
+            {
+                if (IsDisposed || Disposing) return;
+                EnsureVisibleAndActivated();
+                ShowCurrentReleaseNotes(automatically: true);
+                if (!IsDisposed && !Disposing) BeginStartupActivationRetries();
+            }));
         };
         Shown += async (_, _) => await CheckLatestReleaseAsync();
     }
@@ -226,6 +241,13 @@ public partial class Form1 : Form
 
         if (IsDisposed)
         {
+            return;
+        }
+
+        if (_releaseNotesDialog != null && _releaseNotesDialog.Visible)
+        {
+            _releaseNotesDialog.BringToFront();
+            _releaseNotesDialog.Activate();
             return;
         }
 
@@ -610,6 +632,7 @@ public partial class Form1 : Form
         radioSpeedBalanced.Enabled = enabled;
         radioSpeedExtreme.Enabled = enabled;
         linkGithubOrUpdate.Enabled = enabled;
+        labelCurrentVersion.Enabled = enabled;
     }
 
     private void BeginRangeSelect()
@@ -1603,6 +1626,11 @@ public partial class Form1 : Form
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
+        // 更新说明显示期间放行按键，避免 A 触发取色，并让 Esc 正常关闭弹窗。
+        if (_releaseNotesDialog != null)
+        {
+            return NativeMethods.CallNextHookEx(_hookId, nCode, wParam, lParam);
+        }
         if (nCode >= 0 && wParam == (IntPtr)NativeMethods.WM_KEYDOWN)
         {
             int vkCode = Marshal.ReadInt32(lParam);
@@ -1679,6 +1707,7 @@ public partial class Form1 : Form
                 Logger.Debug($"[hook] A pressed, recording color");
                 BeginInvoke((Action)(() =>
                 {
+                    if (_releaseNotesDialog != null) return;
                     // 光标位于本程序窗口上时按 A：取色无意义，且此刻本程序窗口往往是前台，
                     // 后续发送的 I 键 / 左键会被本程序吞掉，或左键直接点到自己的按钮上，
                     // 表现为“按 A 却触发其他操作”。直接中止这次取色。
@@ -2905,12 +2934,8 @@ public partial class Form1 : Form
 
     private static Version GetCurrentAppVersion()
     {
-        if (TryParseVersion(Application.ProductVersion, out var parsed))
-        {
-            return parsed;
-        }
-
-        var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        // 以本程序的程序集版本为准；由其他宿主加载时也不会读到宿主的版本。
+        var v = typeof(Form1).Assembly.GetName().Version;
         return v ?? new Version(0, 0, 0, 0);
     }
 

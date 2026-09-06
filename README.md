@@ -1,9 +1,19 @@
-# 可行性测试✅2026-08-22
 # wplace_canYouHelpMe
 
-当前版本：`1.6.0`
+当前版本：`1.6.2`
 
-> 验证状态（2026-08-22）：已通过 Release 构建、`win-x64` 自包含单文件发布、发布产物启动检查，以及完整/精简布局下的颜色管理交互检查。
+> 最近验证（2026-09-06）：当前 1.6.2 已通过 37 项回归测试，已检查弹窗及完整 / 精简布局；已完成 Windows x64 Release 自包含单文件打包，并运行产物的更新说明预览。实际网页的完整扫描和填涂仍需现场验证。
+
+## 近期更新一览
+
+| 版本 | 更新主题 | 主要变化 | 已完成验证 |
+|---|---|---|---|
+| 1.6.2 | 首次启动更新说明 | 每版首次启动显示、手动重新查看、独立文本维护、预览模式、自动生成带版本号的 EXE | 8 项回归测试、两种主窗口布局、打包产物预览 |
+| 1.6.1 | 取色覆盖层修复 | 取色及范围截图期间持续隐藏红框红点，结束后恢复进度，恢复时不抢焦点 | 10 项真实 WinForms 覆盖层取色测试 |
+| 1.6.1 | 半透明颜色兼容 | 原色和半透明显示色统一归组，再应用颜色规则，保留原始采样 RGB | 10 项颜色匹配测试及 63 色对应表核对 |
+| 1.6.1 | 更新检查修复 | 发布页优先、API 回退、保留失败诊断、支持手动查看发布页 | 9 项更新检查测试 |
+
+各项测试的运行命令见“构建与打包”。更新说明的维护步骤见“每个版本如何维护更新说明”；本地 EXE 的路径和 SHA-256 见“自动生成版本化文件名”。
 
 # 这是什么？
 
@@ -16,6 +26,33 @@
 
 
 注意：该工具依赖 BlueMarble 渲染出来的像素方块。
+
+# 1.6.2 更新内容
+
+- 每个版本首次启动时弹出更新说明，关闭后保存记录，同一版本以后启动不再自动弹出。
+- 主窗口当前版本旁新增“更新说明”链接，完整布局和精简布局都可以随时重新查看。
+- 更新说明内置于单文件 EXE，离线可读；显示期间暂停全局取色快捷键响应，Esc 可关闭弹窗。
+- 发布前可修改 [ReleaseNotes.txt](ReleaseNotes.txt) 更新内容；打包时自动生成带版本号的 EXE。
+
+查看记录保存在 `%LOCALAPPDATA%\wplace_canYouHelpMe\release_notes_state.json`，按 Windows 用户和版本分别记录，移动 EXE 后仍有效。点击“知道了”、按 Esc 或右上角关闭均算已查看。记录文件损坏时会重新显示说明；无法写入时不影响软件使用，但下次启动可能再次显示。
+
+# 1.6.1 更新内容
+
+- 增加原有 63 色的半透明显示色兼容，支持通道取整，并将显示色归回原色后再应用颜色规则。
+- 修复取色期间定时器或进度刷新重新显示红框、红点，导致第二个颜色框读到红色标记的问题；范围截图同步加入覆盖层隐藏保护。
+- 调整更新检查：优先读取发布页跳转，失败后再尝试 API；失败时保留诊断信息并提供手动查看发布页的入口。
+
+# 半透明显示色兼容（1.6.1）
+
+在原有 63 色基础上，新增“50% 不透明度叠加于 `#F8F4F0` 底色”的显示色匹配。例如，深红原色 `#600018` 的显示色 `#AC7A84` 现在仍归入深红色组。原色仍然可匹配，颜色管理仍显示 63 个原色。
+
+这组透明度和底色是根据反馈样本建立的**兼容假设**，尚未逐色实测插件，也不代表插件在所有背景上都采用此渲染方式。完整计算结果见 [63 色半透明对应表](docs/半透明色板_50percent.md)。如果更换了透明度、背景或显示模式，这组计算色可能不再匹配。
+
+全自动扫描、遗漏检测、颜色管理选色、白色样本判断及已取色判重共用原色与显示色的对应关系。判色始终先比较完整色板及其显示色，再按原色应用“想填/不想填”规则。全局 `ColorTol` 仍默认为 0；半透明色只接受计算结果及半整数向上或向下取整，不再叠加原色/遗漏检测容差，以免将浅色背景识别成白色。
+
+普通 A 键取色后的两个色块仍显示原始采样 RGB，不会把 `#AC7A84` 的采样显示替换为 `#600018`。颜色管理选色时，加入列表的是归一后的原色。
+
+本轮修改已通过 Release 构建及 10 项颜色匹配、10 项覆盖层取色、9 项更新检查回归测试。以上更新已包含在 `publish` 目录中的 1.6.1 自包含单文件 EXE 中；网页现场扫描和填涂仍需验证。
 
 # 1.6.0 更新内容
 
@@ -85,6 +122,20 @@
 
 设置保存在 exe 同级目录下的 `user_settings.json`。文件缺失或损坏时会回退到默认值，不影响启动。删除该文件即可重置为默认设置。
 
+# 自动检查更新
+
+程序启动时会在后台检查 GitHub 的最新发布版本，检查失败不会中断取色、范围检测或自动填涂，也不会弹出错误对话框。
+
+1.6.1 修正：优先从发布页跳转获取版本，网页不可用时再尝试 GitHub API；每个来源最多请求一次，不立即重试限流请求。两个来源都失败时，主窗口显示“暂未检查更新，点击查看发布页”，可手动打开 [最新发布页](https://github.com/Nooko331/wplace_canYouHelpMe/releases/latest)。
+
+旧版日志中的 `api status 403 rate limit exceeded` 表示更新 API 被限流。GitHub 未认证 API 按出口 IP 共享每小时 60 次额度，代理或 VPN 的共享出口也可能被其他请求用完，不能仅凭这条日志判断本程序请求过多。详见 [GitHub API 限流说明](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)。
+
+如果同时出现 `The SSL connection could not be established`，表示备用网页连接也未成功；旧版仅记录外层异常，无法进一步判断具体原因。源码修正后，此类非致命更新失败以 `WARN [update]` 记录到原有的 `wplace_canYouHelpMe_error_log.txt`，并保留内部异常、网络错误类别及服务器返回的限流响应头，便于排查。
+
+反馈时请附上完整的 `[update]` 日志、Windows 版本、是否使用代理/VPN，以及浏览器能否打开上述发布页。可先继续使用填涂功能，稍后再查看发布页。
+
+验证记录（2026-09-06）：Release 构建通过，0 警告、0 错误；9 项更新检查回归测试通过；本机正常网络此前使用同一检查代码成功取得发布源的版本 `1.6.0`。该修复已包含在 1.6.1 本地发布包中，尚未验证反馈用户环境中的 SSL 连接。
+
 # 如何更好地使用？
 
 ## 操作前建议切换到英文输入法
@@ -96,6 +147,10 @@
 wplace 会在鼠标悬停到像素方块时显示透明蒙版。程序按下 A 的瞬间会锁定鼠标坐标，随后临时移开鼠标，并等待原位置的颜色连续稳定后再使用。颜色管理模式还会检查结果是否接近内置色板；若超时仍无法确认蒙版已清除，本次颜色不会加入，并提示停稳鼠标后重试。
 
 普通 A 键取色仍会记录悬停色和移开后的底色，并继续执行 i 键与鼠标左键动作；颜色管理模式中的 A 键只加入颜色规则，不会操作画布。
+
+2026-09-06 修复了第二个颜色框偶尔读到红色标记的问题：原先全自动线程隐藏覆盖层后，界面的定时器或进度刷新可能在第二次取色前重新显示红框、红点。现在取色和紧接着的吸管/点击动作全程保持覆盖层隐藏，所有显示入口都遵守同一取色状态；结束后恢复当前填涂进度，颜色管理取色模式则持续隐藏到退出。范围扫描截图也使用相同保护。
+
+隐藏操作统一在界面线程执行，并调用 [DwmFlush](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/nf-dwmapi-dwmflush) 等待本进程已提交的画面更新。覆盖层恢复时不激活窗口。该修复不屏蔽真实红色，也不改变半透明色板的匹配规则。
 
 ## 选好扫描步长
 
@@ -196,9 +251,25 @@ wplace_canYouHelpMe.exe --island-color-tol 15 --island-max-size 5 --island-moat-
 
 # 构建与打包
 
-当前版本：`1.6.0`
+当前版本：`1.6.2`
 
 项目基于 .NET 8，所有命令在项目根目录下执行。
+
+## 每个版本如何维护更新说明
+
+1. 修改项目根目录的 [ReleaseNotes.txt](ReleaseNotes.txt)，使用 UTF-8 纯文本，可以用空行和 `•` 分隔条目。内容会原样显示，较长时支持滚动。
+2. 将 [WplaceColorWatch.csproj](WplaceColorWatch.csproj) 的 `<AppVersion>` 改成新版本号，并同步 README 的版本和更新条目。弹窗标题、首次启动判断和打包文件名会自动使用这个版本号。
+3. 运行下方打包命令。说明会嵌入 EXE，分发时只需发送 EXE。修改源码里的文本后必须重新构建 / 打包，已经生成的 EXE 不会跟随文本文件变化。
+
+发布前可单独预览更新说明，此模式不启动主程序、取色或网络检查，也不修改查看记录：
+
+```powershell
+dotnet run --project .\WplaceColorWatch.csproj -c Release -- --preview-release-notes
+# 也可预览已打包 EXE 内实际包含的说明
+.\publish\win-x64-single-exe\wplace_canYouHelpMe_v1.6.2.exe --preview-release-notes
+```
+
+同一版本只改说明文字不会再次自动弹窗，因此正式发布时需要递增 `<AppVersion>`。如需重新测试自动弹出，可先关闭软件，再删除 `%LOCALAPPDATA%\wplace_canYouHelpMe\release_notes_state.json`；这只重置更新说明的查看记录。
 
 ## 测试版本（Debug）
 
@@ -228,6 +299,42 @@ dotnet build -c Release
 bin/Release/net8.0-windows/wplace_canYouHelpMe.exe
 ```
 
+更新检查回归验证（无外部测试包，模拟网页失败、SSL 错误、API 限流及离线情况）：
+
+```powershell
+dotnet run --project .\tests\UpdateCheck.RegressionTests.csproj -c Release -- --list
+dotnet run --project .\tests\UpdateCheck.RegressionTests.csproj -c Release
+```
+
+可加 `-- --live` 使用同一更新检查代码访问真实发布源；本机结果不代表反馈用户的网络环境。
+
+半透明颜色匹配回归验证（原有 63 色、全部半透明色、通道取整、过滤及色组归一）：
+
+```powershell
+dotnet run --project .\tests\ColorMatching\ColorMatching.RegressionTests.csproj -c Release -- --list
+dotnet run --project .\tests\ColorMatching\ColorMatching.RegressionTests.csproj -c Release
+```
+
+覆盖层取色回归验证（需要可读屏的 Windows 桌面，会短暂显示临时色块和红色标记；不发送绘图按键，结束后恢复鼠标位置）：
+
+```powershell
+dotnet run --project .\tests\OverlayCapture\OverlayCapture.RegressionTests.csproj -c Release -- --list
+dotnet run --project .\tests\OverlayCapture\OverlayCapture.RegressionTests.csproj -c Release
+```
+
+测试使用真实主窗体代码和计时器，检查后台取色、界面线程取色、真实红色、显示入口、嵌套取色、异常清理、取消预览、规则取色、三条范围扫描路径和窗口销毁。测试期间启用跨线程控件访问检查；临时画布测试不能替代实际网页的悬停蒙版消退及完整填涂验证。
+
+本机验证（2026-09-06）：上述 10 项覆盖层测试、10 项颜色匹配测试、9 项更新检查测试全部通过；Release 构建 0 警告、0 错误。
+
+更新说明回归验证（需要正常的 Windows 桌面焦点访问，会短暂显示并自动关闭测试窗体，使用独立测试记录，不修改真实查看记录及用户设置）：
+
+```powershell
+dotnet run --project .\tests\ReleaseNotes\ReleaseNotes.RegressionTests.csproj -c Release -- --list
+dotnet run --project .\tests\ReleaseNotes\ReleaseNotes.RegressionTests.csproj -c Release
+```
+
+8 项测试覆盖内置中文内容、首次启动与重启记录、逐版本记录、损坏 / 不可写记录恢复、长内容滚动和缩放、自动显示及手动重开、快捷键放行和两种主窗口布局。截图保存在测试输出目录的 `artifacts` 中。
+
 ## 打包发布版本（自包含单文件）
 
 自包含（self-contained），无需系统安装 .NET 运行时，单个可执行文件，可直接分发给用户。
@@ -238,9 +345,9 @@ bin/Release/net8.0-windows/wplace_canYouHelpMe.exe
 dotnet publish .\WplaceColorWatch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:DebugSymbols=false -o .\publish\win-x64-single-exe
 ```
 
-### 产物重命名（版本号后缀）
+### 自动生成版本化文件名
 
-打包完成后，需要将输出的 exe 文件重命名，添加版本号后缀。版本号从 `.csproj` 的 `<AppVersion>` 读取。
+打包时直接生成带版本号的 EXE，无需额外重命名。版本号从 `.csproj` 的 `<AppVersion>` 读取，内部程序集名称保持不变。
 
 **命名规范**：
 
@@ -251,21 +358,21 @@ dotnet publish .\WplaceColorWatch.csproj -c Release -r win-x64 --self-contained 
 示例：
 
 ```
-wplace_canYouHelpMe.exe → wplace_canYouHelpMe_v1.6.0.exe
+wplace_canYouHelpMe_v1.6.2.exe
 ```
 
 **版本号格式标准**：
 
 - 格式：`_v{主版本}.{次版本}.{修订号}`
 - 版本号来源：`WplaceColorWatch.csproj` 中的 `<AppVersion>` 节点
-- 示例：`_v1.6.0`、`_v2.0.0`、`_v1.2.3`
+- 示例：`_v1.6.2`、`_v2.0.0`、`_v1.2.3`
 
-**重命名命令**：
+**核对产物命令**：
 
 ```powershell
-# 读取版本号并重命名（在项目根目录下执行）
+# 读取版本号并核对产物（在项目根目录下执行）
 $version = (Select-Xml -Path .\WplaceColorWatch.csproj -XPath "//AppVersion").Node.InnerText
-Rename-Item -Path .\publish\win-x64-single-exe\wplace_canYouHelpMe.exe -NewName "wplace_canYouHelpMe_v$version.exe"
+Get-Item -LiteralPath ".\publish\win-x64-single-exe\wplace_canYouHelpMe_v$version.exe"
 ```
 
 **最终产物路径**：
@@ -277,7 +384,23 @@ publish/win-x64-single-exe/wplace_canYouHelpMe_v{版本号}.exe
 当前版本产物：
 
 ```text
-publish/win-x64-single-exe/wplace_canYouHelpMe_v1.6.0.exe
+publish/win-x64-single-exe/wplace_canYouHelpMe_v1.6.2.exe
+```
+
+1.6.2 产物校验（2026-09-06）：文件版本 `1.6.2.0`，Windows x64，非 Debug，大小 `71,717,046` 字节（约 `68.39 MiB`）。打包前后的 8 个旧版本 EXE/ZIP 的 SHA-256 均一致。已运行该 EXE 的 `--preview-release-notes` 模式，确认显示 `更新说明 · v1.6.2`、正常关闭且未修改真实查看记录。
+
+1.6.2 SHA-256：
+
+```text
+ABC1754039858FD780D7BAD001F9CA14BE6DA3FCBFB0DF804247036B892A7D73
+```
+
+历史 1.6.1 产物校验（2026-09-06）：文件版本 `1.6.1.0`，Windows x64，非 Debug，大小 `71,749,112` 字节（约 `68.43 MiB`）。该次打包前后的 7 个旧版本 EXE/ZIP 的 SHA-256 均一致。
+
+1.6.1 SHA-256：
+
+```text
+279D582230A7FA68F0542C54633270BA748A40D2C14AD053EA570C72AE890C01
 ```
 
 ### 打包参数说明

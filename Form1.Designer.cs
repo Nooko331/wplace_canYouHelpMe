@@ -28,7 +28,7 @@ partial class Form1
     private System.Windows.Forms.Label labelAutoAllValue;
     private System.Windows.Forms.Button btnToggleLayout;
     private System.Windows.Forms.LinkLabel linkGithubOrUpdate;
-    private System.Windows.Forms.Label labelCurrentVersion;
+    private System.Windows.Forms.LinkLabel labelCurrentVersion;
 
     /// <summary>
     ///  Clean up any resources being used.
@@ -81,7 +81,7 @@ partial class Form1
             this.labelAutoAllValue = new System.Windows.Forms.Label();
             this.btnToggleLayout = new System.Windows.Forms.Button();
             this.linkGithubOrUpdate = new System.Windows.Forms.LinkLabel();
-            this.labelCurrentVersion = new System.Windows.Forms.Label();
+            this.labelCurrentVersion = new System.Windows.Forms.LinkLabel();
             this.panelLeft.SuspendLayout();
             this.SuspendLayout();
             // 

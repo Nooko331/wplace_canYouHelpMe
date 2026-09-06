@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <AppVersion>1.6.1</AppVersion>
+    <AppVersion>1.6.2</AppVersion>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
@@ -18,6 +18,23 @@
 
   <ItemGroup>
     <Compile Remove="tests/**/*.cs" />
+    <EmbeddedResource Include="ReleaseNotes.txt" LogicalName="WplaceColorWatch.ReleaseNotes.txt" />
+    <InternalsVisibleTo Include="ReleaseNotes.RegressionTests" />
   </ItemGroup>
+
+  <!-- 直接以版本化文件名生成单文件包，保持内部程序集名称不变。 -->
+  <Target Name="NameVersionedSingleFile" AfterTargets="PrepareForBundle"
+          Condition="'$(PublishSingleFile)' == 'true'">
+    <PropertyGroup>
+      <PublishedSingleFileName>$(AssemblyName)_v$(AppVersion)$(_NativeExecutableExtension)</PublishedSingleFileName>
+      <PublishedSingleFilePath>$(PublishDir)$(PublishedSingleFileName)</PublishedSingleFilePath>
+      <AppHostFile>$(PublishedSingleFileName)</AppHostFile>
+    </PropertyGroup>
+    <ItemGroup>
+      <FilesToBundle Condition="'%(FilesToBundle.RelativePath)' == '$(AssemblyName)$(_NativeExecutableExtension)'">
+        <RelativePath>$(PublishedSingleFileName)</RelativePath>
+      </FilesToBundle>
+    </ItemGroup>
+  </Target>
 
 </Project>
