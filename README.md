@@ -387,12 +387,12 @@ publish/win-x64-single-exe/wplace_canYouHelpMe_v{版本号}.exe
 publish/win-x64-single-exe/wplace_canYouHelpMe_v1.6.2.exe
 ```
 
-1.6.2 产物校验（2026-09-06）：文件版本 `1.6.2.0`，Windows x64，非 Debug，大小 `71,717,046` 字节（约 `68.39 MiB`）。打包前后的 8 个旧版本 EXE/ZIP 的 SHA-256 均一致。已运行该 EXE 的 `--preview-release-notes` 模式，确认显示 `更新说明 · v1.6.2`、正常关闭且未修改真实查看记录。
+1.6.2 产物校验（2026-09-06）：依据源码提交 `ced5cdc` 重新打包，文件版本 `1.6.2.0`，Windows x64，非 Debug，大小 `71,717,047` 字节（约 `68.39 MiB`）。打包前后的 8 个旧版本 EXE/ZIP 的 SHA-256 均一致。已在仅含该 EXE 的独立目录中运行 `--preview-release-notes`，确认显示 `更新说明 · v1.6.2`、正常关闭且未修改真实查看记录。本次重打包前的 1.6.2 已备份至 `publish/archive/1.6.2-before-20260906-202008/`。
 
 1.6.2 SHA-256：
 
 ```text
-ABC1754039858FD780D7BAD001F9CA14BE6DA3FCBFB0DF804247036B892A7D73
+0B29985723FC1B7DF481A19B8D77F2C50F118F85BD5BE1E3517DAA609628C544
 ```
 
 历史 1.6.1 产物校验（2026-09-06）：文件版本 `1.6.1.0`，Windows x64，非 Debug，大小 `71,749,112` 字节（约 `68.43 MiB`）。该次打包前后的 7 个旧版本 EXE/ZIP 的 SHA-256 均一致。
