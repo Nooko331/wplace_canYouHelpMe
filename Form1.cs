@@ -2486,7 +2486,7 @@ public partial class Form1 : Form
             .Concat(order.Where(color => !IsWhite(color)))
             .ToList();
         bool whiteColorCompleted = false;
-        // 只在实际涂色校验通过后记录；发送空格本身不能证明取色成功。
+        // 白色免校验；其他颜色只在实际涂色校验通过后记录。
         var pickedColors = new HashSet<BgrColor>();
 
         // 构建覆盖层点列表：按聚类后的实际处理顺序排列，使覆盖层显示与填色进度一致
@@ -2563,7 +2563,8 @@ public partial class Form1 : Form
                         token.WaitHandle.WaitOne(_options.ClusterFillStepDelayMs))
                         token.ThrowIfCancellationRequested();
                 },
-                token);
+                token,
+                verifyAfterPick: !currentColorIsWhite);
 
             if (!anyPointFilled)
             {
@@ -2572,8 +2573,9 @@ public partial class Form1 : Form
 
             if (currentColorIsWhite)
             {
-                whiteColorCompleted = pickedColors.Contains(color);
-                Logger.Debug($"[exec_all] white color completed, verified={whiteColorCompleted}");
+                whiteColorCompleted = anyPointFilled;
+                if (whiteColorCompleted) pickedColors.Add(color);
+                Logger.Debug($"[exec_all] white color completed, picked={whiteColorCompleted}, paint verification skipped");
             }
         }
         Logger.Debug($"[exec_all] ExecuteAutoFillAll done: processed={processed}/{total}");

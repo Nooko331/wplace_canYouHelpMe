@@ -13,6 +13,8 @@ internal static class Program
         ("RejectedRecoveryPickStillRequiresPicking", RejectedRecoveryPick),
         ("OnlyUnconfirmedPickedPointsAreVerifiedAtEnd", LastAndSinglePoints),
         ("EachColorGroupStartsWithANewPick", EachGroupPicksAgain),
+        ("WhiteGroupSkipsAllPaintVerification", WhiteGroupSkipsVerification),
+        ("WhiteExemptionDoesNotSkipTheNextColor", WhiteExemptionStaysInGroup),
         ("CancellationDuringVerificationStopsCurrentFill", CancelDuringVerification),
         ("CancellationDuringPickingStopsCurrentFill", CancelDuringPicking),
         ("CancellationAfterMovingStopsBeforeActions", CancelAfterMoving)
@@ -150,6 +152,41 @@ internal static class Program
             "Cancellation during a failed check must not repick or paint the next point.");
     }
 
+    private static void WhiteGroupSkipsVerification()
+    {
+        var f = new Fixture { Target = new BgrColor(255, 255, 255) };
+        f.PickBrush = _ => f.Wrong;
+        f.Run(verifyAfterPick: false);
+        Require(f.Picks.SequenceEqual(new[] { 0 }) && f.Verified.Count == 0,
+            "The initial white pick must continue without paint verification or recovery picks.");
+        Require(f.Pixels.Count == 4 && f.Processed == 4,
+            "Skipping white verification must still fill and advance all points.");
+
+        var single = new Fixture { Target = new BgrColor(255, 255, 255) };
+        single.Run(new[] { single.Points[0] }, verifyAfterPick: false);
+        Require(single.Picks.Count == 1 && single.Verified.Count == 0 && single.Processed == 1,
+            "A single white point must not add a terminal verification.");
+
+        var rejected = new Fixture { Target = new BgrColor(255, 255, 255), RejectPick = index => index == 0 };
+        rejected.Run(verifyAfterPick: false);
+        Require(rejected.Picks.SequenceEqual(new[] { 0, 1 }) && rejected.Verified.Count == 0 &&
+            rejected.Pixels.Count == 3 && rejected.Processed == 4,
+            "Exempting white paint must not reuse a rejected pick or lose progress.");
+    }
+
+    private static void WhiteExemptionStaysInGroup()
+    {
+        var f = new Fixture { Target = new BgrColor(255, 255, 255) };
+        f.Run(f.Points.Take(2).ToArray(), verifyAfterPick: false);
+        f.Target = new BgrColor(24, 0, 96);
+        f.PickBrush = index => index == 2 ? f.Wrong : f.Target;
+        f.Run(f.Points.Skip(2).ToArray());
+        Require(f.Picks.SequenceEqual(new[] { 0, 2, 3 }) && f.Verified.SequenceEqual(new[] { 2, 3 }),
+            "The color after white must verify its first paint and recover a wrong pick.");
+        Require(f.Pixels[f.Points[3]] == f.Target,
+            "The next color did not recover after the white exemption.");
+    }
+
     private static void CancelDuringPicking()
     {
         using var cts = new CancellationTokenSource();
@@ -182,7 +219,7 @@ internal static class Program
     private sealed class Fixture
     {
         public Point[] Points { get; } = Enumerable.Range(0, 4).Select(i => new Point(100 + i * 10, 100)).ToArray();
-        public BgrColor Target { get; } = new(24, 0, 96);
+        public BgrColor Target { get; set; } = new(24, 0, 96);
         public BgrColor Wrong { get; } = new(36, 28, 237);
         public BgrColor Brush { get; set; }
         public Dictionary<Point, BgrColor> Pixels { get; } = new();
@@ -198,7 +235,8 @@ internal static class Program
         public Action<int>? BeforeFill { get; set; }
         private int _current;
 
-        public bool Run(IReadOnlyList<Point>? points = null, CancellationToken token = default) =>
+        public bool Run(IReadOnlyList<Point>? points = null, CancellationToken token = default,
+            bool verifyAfterPick = true) =>
             AutoFillColorGroup.Execute(points ?? Points,
                 point =>
                 {
@@ -230,6 +268,6 @@ internal static class Program
                     Events.Add($"fill:{_current}:{(pickedNow ? "pick" : "reuse")}");
                     Pixels[Points[_current]] = Brush;
                 },
-                () => { Processed++; Events.Add($"progress:{Processed}"); }, token);
+                () => { Processed++; Events.Add($"progress:{Processed}"); }, token, verifyAfterPick);
     }
 }

@@ -17,7 +17,8 @@ internal static class AutoFillColorGroup
         Func<Point, bool> tryPickColor,
         Action<bool> fillPoint,
         Action pointProcessed,
-        CancellationToken token)
+        CancellationToken token,
+        bool verifyAfterPick = true)
     {
         bool needsColorPick = true;
         bool anyPointFilled = false;
@@ -29,8 +30,9 @@ internal static class AutoFillColorGroup
             moveToPoint(point);
             token.ThrowIfCancellationRequested();
 
-            // Only the first paint after picking needs confirmation. Once it
-            // matches, reuse the brush for the rest of this color group.
+            // Only the first paint after picking needs confirmation, unless
+            // the caller exempts this group (white). Once it matches, reuse
+            // the brush for the rest of this color group.
             if (pendingPickedPoint.HasValue)
             {
                 needsColorPick = !verifyPaintedPoint(pendingPickedPoint.Value);
@@ -50,7 +52,7 @@ internal static class AutoFillColorGroup
             }
 
             fillPoint(needsColorPick);
-            pendingPickedPoint = needsColorPick ? point : null;
+            pendingPickedPoint = needsColorPick && verifyAfterPick ? point : null;
             needsColorPick = false;
             anyPointFilled = true;
             pointProcessed();
