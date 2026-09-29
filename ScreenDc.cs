@@ -21,6 +21,18 @@ public sealed class ScreenDc : IDisposable
         return new BgrColor(b, g, r);
     }
 
+    public bool TryGetPixel(int x, int y, out BgrColor color)
+    {
+        uint colorRef = _hdc == IntPtr.Zero ? uint.MaxValue : NativeMethods.GetPixel(_hdc, x, y);
+        if (colorRef == uint.MaxValue) // CLR_INVALID is not a white pixel.
+        {
+            color = default;
+            return false;
+        }
+        color = new BgrColor((byte)(colorRef >> 16), (byte)(colorRef >> 8), (byte)colorRef);
+        return true;
+    }
+
     public void Dispose()
     {
         if (_hdc != IntPtr.Zero)

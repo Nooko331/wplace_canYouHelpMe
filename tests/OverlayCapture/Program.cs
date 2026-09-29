@@ -16,6 +16,13 @@ internal static class Program
         ("UncheckedPreviewStaysHidden", UncheckedPreviewStaysHidden),
         ("RulePickingStaysHiddenBetweenSamples", RulePickingStaysHidden),
         ("AllThreeRegionScannersIgnoreMarkers", RegionScannersIgnoreMarkers),
+        ("PaintVerificationIgnoresMarkersAndKeepsNextCursor", PaintVerificationIgnoresMarkers),
+        ("UnpaintedDisplayAliasIsNotSuccessfulPaint", UnpaintedAliasIsNotPaint),
+        ("PaintVerificationWaitsForDelayedRendering", PaintVerificationWaitsForRendering),
+        ("FinalPaintVerificationMovesAwayAndRestoresCursor", FinalPaintVerificationMovesAway),
+        ("CancelledPaintVerificationReleasesCapture", CancelledPaintVerificationReleasesCapture),
+        ("InvalidPixelReadCannotConfirmWhitePaint", InvalidPixelReadCannotConfirmWhite),
+        ("CurrentTargetCanBePickedAgain", CurrentTargetCanBePickedAgain),
         ("WorkerCanReleaseCaptureAfterWindowDisposal", ReleaseAfterWindowDisposal)
     };
 
@@ -196,6 +203,129 @@ internal static class Program
         var points = RunWorker(() => (List<Point>)Call(f.Main,
             "ScanMatchingPoints", f.Range, new List<BgrColor> { f.Expected }, CancellationToken.None, null)!);
         Require(points.Count == expectedCount, "Recorded-color screenshot contains overlay pixels.");
+    }
+
+    private static bool VerifyPaint(Fixture f, BgrColor target, CancellationToken token = default) =>
+        (bool)Call(f.Main, "VerifyPaintedPoint", f.SamplePoint, target, token)!;
+
+    private static void PaintVerificationIgnoresMarkers(Fixture f)
+    {
+        f.SetColor(Color.FromArgb(96, 0, 24));
+        f.SetFill();
+        f.AssertMarkerVisible();
+        var next = new Point(f.SamplePoint.X + 10, f.SamplePoint.Y);
+        Cursor.Position = next;
+        int ticks = 0;
+        using var probe = new System.Windows.Forms.Timer { Interval = 15 };
+        probe.Tick += (_, _) =>
+        {
+            if (Get<int>(f.Main, "_overlayCaptureDepth") == 0) return;
+            ticks++;
+            Call(f.Main, "SetOverlayFillStartIndex", 1);
+            Require(!f.Overlay.Visible, "Progress or timer exposed markers during paint verification.");
+        };
+        probe.Start();
+        Require(RunWorker(() => VerifyPaint(f, f.Expected)), "Correct paint beneath a marker was rejected.");
+        Require(ticks > 0, "The test did not exercise timer interleaving.");
+        Require(Cursor.Position == next, "Checking the previous point moved the cursor off the current point.");
+        Require(Get<int>(f.Main, "_overlayFillStartIndex") == 1, "Verification reset fill progress.");
+    }
+
+    private static void UnpaintedAliasIsNotPaint(Fixture f)
+    {
+        var target = new BgrColor(24, 0, 96);
+        var alias = PaletteColorMatcher.GetHalfTransparentColor(target);
+        f.SetColor(alias.ToColor());
+        Cursor.Position = new Point(f.SamplePoint.X + 10, f.SamplePoint.Y);
+        Require(PaletteColorMatcher.TryMatch(f.Expected, 0, out var matched) && matched == target,
+            "The test sample must remain a valid reference-image alias.");
+        var watch = Stopwatch.StartNew();
+        Require(!RunWorker(() => VerifyPaint(f, target)), "An unpainted reference alias was accepted as successful paint.");
+        Require(watch.ElapsedMilliseconds >= 240, "A mismatch was reported before waiting for rendering.");
+    }
+
+    private static void PaintVerificationWaitsForRendering(Fixture f)
+    {
+        var target = new BgrColor(24, 0, 96);
+        f.SetColor(Color.FromArgb(237, 28, 36));
+        Cursor.Position = new Point(f.SamplePoint.X + 10, f.SamplePoint.Y);
+        bool rendered = false;
+        using var render = new System.Windows.Forms.Timer { Interval = 120 };
+        render.Tick += (_, _) =>
+        {
+            render.Stop();
+            rendered = true;
+            f.SetColor(target.ToColor());
+        };
+        render.Start();
+        Require(RunWorker(() => VerifyPaint(f, target)), "Delayed correct paint was rejected as a bad pick.");
+        Require(rendered, "A stable wrong color was accepted before the render changed it.");
+    }
+
+    private static void FinalPaintVerificationMovesAway(Fixture f)
+    {
+        f.SetColor(Color.White);
+        Cursor.Position = f.SamplePoint;
+        var workerCursorBefore = RunWorker(() => Cursor.Position);
+        bool movedAway = false;
+        using var probe = new System.Windows.Forms.Timer { Interval = 15 };
+        probe.Tick += (_, _) =>
+        {
+            if (Get<int>(f.Main, "_overlayCaptureDepth") > 0 && Cursor.Position != f.SamplePoint) movedAway = true;
+        };
+        probe.Start();
+        Require(RunWorker(() => VerifyPaint(f, f.Expected)), "The final white point was not verified.");
+        Require(movedAway && Cursor.Position == f.SamplePoint,
+            $"The final check did not leave and restore the last point: moved={movedAway} beforeWorker={workerCursorBefore} after={Cursor.Position} expected={f.SamplePoint}.");
+    }
+
+    private static void CancelledPaintVerificationReleasesCapture(Fixture f)
+    {
+        using var cts = new CancellationTokenSource();
+        var next = new Point(f.SamplePoint.X + 10, f.SamplePoint.Y);
+        Cursor.Position = next;
+        bool cancellationDuringCapture = false;
+        using var probe = new System.Windows.Forms.Timer { Interval = 15 };
+        probe.Tick += (_, _) =>
+        {
+            if (Get<int>(f.Main, "_overlayCaptureDepth") == 0) return;
+            cancellationDuringCapture = true;
+            cts.Cancel();
+        };
+        probe.Start();
+        bool cancelled = RunWorker(() =>
+        {
+            try { VerifyPaint(f, new BgrColor(24, 0, 96), cts.Token); }
+            catch (OperationCanceledException) { return true; }
+            return false;
+        });
+        Require(cancelled && cancellationDuringCapture, "Cancellation did not interrupt active verification.");
+        Require(Get<int>(f.Main, "_overlayCaptureDepth") == 0 && f.Overlay.Visible,
+            "Cancellation left the overlay suppressed.");
+        Require(Cursor.Position == next, $"Cancelled verification changed the next-point cursor: actual={Cursor.Position} expected={next}.");
+    }
+
+    private static void InvalidPixelReadCannotConfirmWhite(Fixture f)
+    {
+        var invalid = new Point(int.MaxValue, int.MaxValue);
+        using var dc = new ScreenDc();
+        Require(!dc.TryGetPixel(invalid.X, invalid.Y, out _), "CLR_INVALID was converted to a color.");
+        Require(!RunWorker(() => (bool)Call(f.Main, "VerifyPaintedPoint", invalid,
+            new BgrColor(255, 255, 255), CancellationToken.None)!), "An invalid screen read confirmed white paint.");
+        dc.Dispose();
+        Require(!dc.TryGetPixel(f.SamplePoint.X, f.SamplePoint.Y, out _), "A disposed screen DC returned a valid pixel.");
+    }
+
+    private static void CurrentTargetCanBePickedAgain(Fixture f)
+    {
+        var target = new BgrColor(24, 0, 96);
+        var old = new BgrColor(36, 28, 237);
+        var picked = new HashSet<BgrColor> { target, old };
+        Require(!(bool)Call(f.Main, "IsColorAlreadyPicked", target, picked, target)!,
+            "The current target was rejected during repicking.");
+        Require(!(bool)Call(f.Main, "IsColorAlreadyPicked", PaletteColorMatcher.GetHalfTransparentColor(target), picked, target)!,
+            "The current target's display alias was rejected during repicking.");
+        Require((bool)Call(f.Main, "IsColorAlreadyPicked", old, picked, target)!, "An old different color was no longer rejected.");
     }
 
     private static void ReleaseAfterWindowDisposal(Fixture f)

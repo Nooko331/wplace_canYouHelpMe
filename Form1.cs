@@ -582,16 +582,16 @@ public partial class Form1 : Form
 
     /// <summary>
     /// 将原色/半透明显示色归回完整色板后，再判断是否命中已取过的颜色（容差 = ColorTol）。
-    /// 用于多色全自动填涂时跳过“取到旧笔色”的异常点，避免用旧笔色覆盖当前色组。
+    /// 当前目标色允许再次取色；仅将其他色组的已用颜色视为旧笔色。
     /// </summary>
-    private bool IsColorAlreadyPicked(BgrColor sample, HashSet<BgrColor> pickedColors)
+    private bool IsColorAlreadyPicked(BgrColor sample, HashSet<BgrColor> pickedColors, BgrColor target)
     {
         if (pickedColors.Count == 0)
         {
             return false;
         }
         return PaletteColorMatcher.TryMatch(sample, _options.ColorTol, out var color) &&
-            pickedColors.Contains(color);
+            color != target && pickedColors.Contains(color);
     }
 
     private static string FormatBgrs(List<BgrColor> bgrs)
@@ -2006,6 +2006,10 @@ public partial class Form1 : Form
                 ExecuteAutoFillAll(groups, allowedColors, token);
                 Logger.Debug("[auto_all] ExecuteAutoFillAll completed");
             }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                Logger.Debug("[auto_all] cancelled");
+            }
             catch (Exception ex)
             {
                 Logger.Error($"[auto_all] error: {ex}");
@@ -2343,6 +2347,10 @@ public partial class Form1 : Form
             {
                 RunIslandDetection(snapshot.recordedRange.Value, allowedColors, token, _state.GetPolygon());
             }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                Logger.Debug("[island] cancelled");
+            }
             catch (Exception ex)
             {
                 Logger.Error($"[island] error: {ex}");
@@ -2478,9 +2486,7 @@ public partial class Form1 : Form
             .Concat(order.Where(color => !IsWhite(color)))
             .ToList();
         bool whiteColorCompleted = false;
-        // 本次自动化运行中已经成功取色（并用作笔色）的预设色集合。
-        // 取色时若读到的底色命中此集合，说明该点已是之前涂过的颜色（已涂区域/串色），
-        // 跳过本次填涂并移至下一点重新取色，直至取到未用过的颜色，避免用旧笔色覆盖当前色组。
+        // 只在实际涂色校验通过后记录；发送空格本身不能证明取色成功。
         var pickedColors = new HashSet<BgrColor>();
 
         // 构建覆盖层点列表：按聚类后的实际处理顺序排列，使覆盖层显示与填色进度一致
@@ -2527,100 +2533,47 @@ public partial class Form1 : Form
             var orderedPoints = FillPlanner.FlattenClusters(clusters);
             Logger.Debug($"[exec_all] color clustered into {clusters.Count} groups, ordered={orderedPoints.Count}");
 
-            int startIndex = 0;
-            bool firstPointHandled = false;
-            while (startIndex < orderedPoints.Count)
-            {
-                if (token.IsCancellationRequested) return;
-
-                var first = orderedPoints[startIndex];
-                Logger.Debug($"[exec_all] color first pt ({startIndex}/{orderedPoints.Count}) pos=({first.X},{first.Y})");
-                Cursor.Position = first;
-                Thread.Sleep(_options.ActionDelayMs);
-
-                // Focus on the window under cursor FIRST and wait longer
-                ClickRightCurrentPosition();
-                Thread.Sleep(200); // Increased delay to ensure focus is applied
-
-                var recorded = PerformColorRecordAndAction();
-                if (token.IsCancellationRequested) return;
-
-                // 颜色检测完成后重新显示剩余像素点
-                // 低频更新：仅每 10 个点或首个点时更新覆盖层
-                if (processed % 10 == 0 || processed == 1)
+            int colorProcessed = 0;
+            bool anyPointFilled = AutoFillColorGroup.Execute(
+                orderedPoints,
+                point => Cursor.Position = point,
+                point =>
                 {
-                    BeginInvoke((Action)(() => SetOverlayFillStartIndex(processed)));
-                }
-
-                if (whiteColorCompleted && !currentColorIsWhite && IsWhiteSample(recorded.clear))
+                    bool matches = VerifyPaintedPoint(point, color, token);
+                    if (matches) pickedColors.Add(color);
+                    return matches;
+                },
+                point => TryPickAutoFillColor(point, color, whiteColorCompleted, pickedColors, token),
+                pickedNow =>
                 {
-                    Logger.Debug($"[auto_all] skip white sample while switching color target={FormatBgr(color)} pt=({first.X},{first.Y}) clear={FormatBgr(recorded.clear)}");
+                    if (pickedNow && _options.ColorPickToFillDelayMs > 0 &&
+                        token.WaitHandle.WaitOne(_options.ColorPickToFillDelayMs))
+                        token.ThrowIfCancellationRequested();
+                    token.ThrowIfCancellationRequested();
+                    if (pickedNow) SendSpace();
+                    else SendSpaceForFill();
+                },
+                () =>
+                {
+                    colorProcessed++;
                     processed++;
                     UpdateAutoAllOverlay(processed);
                     UpdateAutoAllProgress(processed, total);
-                    startIndex++;
-                    continue;
-                }
+                    if (colorProcessed < orderedPoints.Count && _options.ClusterFillStepDelayMs > 0 &&
+                        token.WaitHandle.WaitOne(_options.ClusterFillStepDelayMs))
+                        token.ThrowIfCancellationRequested();
+                },
+                token);
 
-                // 取色异常：读到的底色命中本次运行已取过的颜色（多为已涂区域/串色），并非当前目标色。
-                // 跳过本次填涂，移至下一点重新取色，以此循环，直至取到未用过的颜色。
-                // 注意：白色样本已由上面的 white-skip 分支提前处理（常见情况，仅记 Debug，避免污染错误日志），
-                //       此处只命中非白色的“旧笔色”，属于真正需要记录的取色异常。
-                if (IsColorAlreadyPicked(recorded.clear, pickedColors))
-                {
-                    Logger.Error($"[auto_all] 取色异常：目标色 {FormatBgr(color)} 在点 ({first.X},{first.Y}) 取到已用过的颜色 {FormatBgr(recorded.clear)}，跳过填涂并移至下一点重新取色");
-                    processed++;
-                    UpdateAutoAllOverlay(processed);
-                    UpdateAutoAllProgress(processed, total);
-                    startIndex++;
-                    continue;
-                }
-
-                Thread.Sleep(_options.ColorPickToFillDelayMs);
-                SendSpace();
-                // 取色并涂色成功：将当前目标色记入已取色集合，供后续色组比对
-                pickedColors.Add(color);
-                processed++;
-                UpdateAutoAllOverlay(processed);
-                UpdateAutoAllProgress(processed, total);
-                startIndex++;
-                firstPointHandled = true;
-                break;
-            }
-
-            if (!firstPointHandled)
+            if (!anyPointFilled)
             {
-                // 整个色组的所有点都取到已用过的颜色（或白色），未找到可用作取色的点
-                Logger.Error($"[auto_all] 取色异常：颜色 {FormatBgr(color)} 的 {orderedPoints.Count} 个点均取到已用过的颜色，无法取到目标色，跳过该色组");
-                if (currentColorIsWhite)
-                {
-                    whiteColorCompleted = true;
-                }
-                continue;
-            }
-
-            // Handle subsequent points for this color — 使用快速填色+聚类顺序
-            for (int i = startIndex; i < orderedPoints.Count; i++)
-            {
-                if (token.IsCancellationRequested) return;
-                Cursor.Position = orderedPoints[i];
-                // FocusTargetUnderCursor();
-                SendSpaceForFill();
-                processed++;
-                UpdateAutoAllOverlay(processed);
-                UpdateAutoAllProgress(processed, total);
-
-                // 簇内连续点之间的可选等待（快速划过时通常为0）
-                if (i < orderedPoints.Count - 1 && _options.ClusterFillStepDelayMs > 0)
-                {
-                    Thread.Sleep(_options.ClusterFillStepDelayMs);
-                }
+                Logger.Error($"[auto_all] 取色异常：颜色 {FormatBgr(color)} 未找到可用取色点，跳过该色组");
             }
 
             if (currentColorIsWhite)
             {
-                whiteColorCompleted = true;
-                Logger.Debug("[exec_all] white color completed, whiteColorCompleted=true");
+                whiteColorCompleted = pickedColors.Contains(color);
+                Logger.Debug($"[exec_all] white color completed, verified={whiteColorCompleted}");
             }
         }
         Logger.Debug($"[exec_all] ExecuteAutoFillAll done: processed={processed}/{total}");
@@ -2667,26 +2620,25 @@ public partial class Form1 : Form
 
     /// <summary>
     /// 应用速度预设。
-    /// 平衡：总耗时控制在 100ms 以内，保证准确性。
-    /// 极致速度：削减准确性，越快越好。
+    /// 预设控制发送空格的延迟与重复次数；两种模式都只验证取色后的首次涂色。
     /// </summary>
     private void ApplySpeedPreset(SpeedPreset preset)
     {
         switch (preset)
         {
             case SpeedPreset.Balanced:
-                // 平衡：40ms 延迟 + 2 次空格 + 10ms 间隔 ≈ 90ms/点（<100ms，保证准确性）
+                // 空格发送约 90ms，取色后的首次涂色另加稳定校验的等待。
                 _options.FillActionDelayMs = 40;
                 _options.FillSpaceRepeatCount = 2;
                 _options.FillSpaceRepeatGapMs = 10;
-                Logger.Debug("[speed] preset=Balanced (delay=40ms repeat=2 gap=10ms ~90ms/pt)");
+                Logger.Debug("[speed] preset=Balanced (delay=40ms repeat=2 gap=10ms; paint verification enabled)");
                 break;
             case SpeedPreset.Extreme:
-                // 极致速度：20ms 延迟 + 1 次空格 + 0ms 间隔 ≈ 20ms/点
+                // 空格发送约 20ms，取色后的首次涂色仍然校验。
                 _options.FillActionDelayMs = 20;
                 _options.FillSpaceRepeatCount = 1;
                 _options.FillSpaceRepeatGapMs = 0;
-                Logger.Debug("[speed] preset=Extreme (delay=20ms repeat=1 gap=0ms ~20ms/pt)");
+                Logger.Debug("[speed] preset=Extreme (delay=20ms repeat=1 gap=0ms; paint verification enabled)");
                 break;
         }
     }

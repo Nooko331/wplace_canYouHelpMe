@@ -1,0 +1,84 @@
+## 构建产物
+bin/
+obj/
+publish/
+out/
+artifacts/
+TestResults/
+BenchmarkDotNet.Artifacts/
+*.pdb
+*.binlog
+/wplace_canYouHelpMe*.exe
+/wplace_canYouHelpMe*.zip
+/WplaceColorWatch_canYouHelpMe*.exe
+
+## IDE / 编辑器
+.vs/
+.vscode/
+.idea/
+.history/
+
+## AI 助手本地数据
+.claude/
+.trae/
+.workbuddy/
+.agents/
+.codex/
+
+## 用户特定文件
+*.user
+*.suo
+*.rsuser
+*.userosscache
+*.sln.docstates
+user_settings.json
+release_notes_state.json
+
+## 日志、转储及网络抓包（可能含本机路径或会话信息）
+*.log
+*.log.*
+*_error_log.txt
+*.dmp
+*.dump
+*.har
+
+## 私密配置与凭据；无敏感值的示例配置可提交
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+secrets.json
+credentials.json
+*.secrets.json
+*.credentials.json
+*.pem
+*.key
+*.pfx
+*.p12
+*.snk
+*.keystore
+*.jks
+
+## 本地数据库及其附属文件
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+## 临时文件与系统缓存
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+## 本地需求与设计工作文件
+要求.md
+shape.psd

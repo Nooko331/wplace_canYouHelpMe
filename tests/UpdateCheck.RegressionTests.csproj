@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="AutoFill/**/*.cs" />
     <Compile Remove="ColorMatching/**/*.cs" />
     <Compile Remove="OverlayCapture/**/*.cs" />
     <Compile Remove="ReleaseNotes/**/*.cs" />
