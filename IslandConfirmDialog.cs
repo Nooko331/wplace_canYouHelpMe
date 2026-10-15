@@ -23,6 +23,9 @@ namespace WplaceColorWatch
         /// <param name="showYesNo">true=是/否 按钮；false=仅确定按钮</param>
         public static DialogResult Show(Form owner, string message, string title, bool showYesNo)
         {
+            if (owner is Form1 form && form.DesktopHost != null)
+                return form.DesktopHost.Confirm(new EnginePrompt(title, message, showYesNo, null)).Accepted
+                    ? (showYesNo ? DialogResult.Yes : DialogResult.OK) : DialogResult.Cancel;
             using var dlg = new IslandConfirmDialog(owner, message, title, showYesNo, null);
             return dlg.ShowDialog(owner);
         }
@@ -38,6 +41,11 @@ namespace WplaceColorWatch
         public static (DialogResult result, bool dontShowAgain) ShowWithDontShowAgain(
             Form owner, string message, string title, string dontShowAgainText)
         {
+            if (owner is Form1 form && form.DesktopHost != null)
+            {
+                var answer = form.DesktopHost.Confirm(new EnginePrompt(title, message, true, dontShowAgainText));
+                return (answer.Accepted ? DialogResult.Yes : DialogResult.No, answer.DontShowAgain);
+            }
             using var dlg = new IslandConfirmDialog(owner, message, title, true, dontShowAgainText);
             var r = dlg.ShowDialog(owner);
             return (r, dlg._dontShowAgainCheckBox?.Checked ?? false);

@@ -5,12 +5,18 @@ VisualStudioVersion = 16.0.36631.11
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "WplaceColorWatch", "WplaceColorWatch.csproj", "{1E462BF7-B18F-4209-997F-00C702C0BEAF}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Wplace.Desktop", "Desktop\Wplace.Desktop.csproj", "{BF02D35E-5A3C-4FA7-A45F-558F84A3E7E9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{BF02D35E-5A3C-4FA7-A45F-558F84A3E7E9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BF02D35E-5A3C-4FA7-A45F-558F84A3E7E9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BF02D35E-5A3C-4FA7-A45F-558F84A3E7E9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BF02D35E-5A3C-4FA7-A45F-558F84A3E7E9}.Release|Any CPU.Build.0 = Release|Any CPU
 		{1E462BF7-B18F-4209-997F-00C702C0BEAF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{1E462BF7-B18F-4209-997F-00C702C0BEAF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1E462BF7-B18F-4209-997F-00C702C0BEAF}.Release|Any CPU.ActiveCfg = Release|Any CPU

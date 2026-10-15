@@ -22,6 +22,7 @@ namespace WplaceColorWatch
         private Point _end;
         private Rectangle _bounds;
         private readonly int _scanStep;
+        private readonly bool _pixelStyle;
 
         // 多边形画线模式
         private bool _polygonMode;
@@ -35,8 +36,10 @@ namespace WplaceColorWatch
         // 正交多边形顶点（屏幕坐标，闭合环）；null 表示矩形(拖拽)模式。
         public List<Point>? SelectedPolygon { get; private set; }
 
-        public SelectionForm(Rectangle bounds, int scanStep)
+        public SelectionForm(Rectangle bounds, int scanStep, bool pixelStyle = false)
         {
+            _pixelStyle = pixelStyle;
+            Text = "划取检测范围 · wplace";
             _bounds = bounds;
             _scanStep = Math.Max(1, scanStep);
             _screenSnapshot = new Bitmap(bounds.Width, bounds.Height);
@@ -193,12 +196,14 @@ namespace WplaceColorWatch
             if (_polygonMode)
             {
                 PaintPolygon(e.Graphics, maskBrush);
+                DrawInstructions(e.Graphics);
                 return;
             }
 
             if (!_dragging)
             {
                 e.Graphics.FillRectangle(maskBrush, ClientRectangle);
+                DrawInstructions(e.Graphics);
                 return;
             }
 
@@ -226,6 +231,32 @@ namespace WplaceColorWatch
             e.Graphics.DrawRectangle(outerPen, rect);
             e.Graphics.DrawRectangle(innerPen, rect);
             DrawScanPoints(e.Graphics, rect);
+            DrawInstructions(e.Graphics);
+        }
+
+        private void DrawInstructions(Graphics graphics)
+        {
+            if (!_pixelStyle) return;
+            float scale = DeviceDpi / 96f;
+            int S(int value) => (int)Math.Round(value * scale);
+            var bounds = new Rectangle(S(20), S(16), Math.Min(ClientSize.Width - S(40), S(820)), S(48));
+            var navy = Color.FromArgb(24, 52, 86);
+            using var paper = new SolidBrush(Color.FromArgb(247, 251, 255));
+            using var shadow = new SolidBrush(Color.FromArgb(135, 155, 181));
+            using var outline = new Pen(navy, S(1));
+            graphics.FillRectangle(shadow, bounds.X + S(3), bounds.Y + S(3), bounds.Width, bounds.Height);
+            graphics.FillRectangle(paper, bounds);
+            graphics.DrawRectangle(outline, bounds);
+            using var iconPen = new Pen(Color.FromArgb(8, 107, 250), S(3)) { DashStyle = DashStyle.Dash };
+            graphics.DrawRectangle(iconPen, bounds.X + S(15), bounds.Y + S(13), S(22), S(22));
+            string text = _polygonMode ? "单击添加顶点 · 右键撤销 · 回到起点闭合" : _dragging ? "松开鼠标确认矩形" : "拖动框选矩形 · 单击绘制正交多边形";
+            using var font = new Font("Microsoft YaHei UI", 11, FontStyle.Bold);
+            var words = new Rectangle(bounds.X + S(50), bounds.Y, bounds.Width - S(175), bounds.Height);
+            TextRenderer.DrawText(graphics, text, font, words, navy, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
+            var key = new Rectangle(bounds.Right - S(111), bounds.Y + S(9), S(50), S(30));
+            graphics.DrawRectangle(outline, key);
+            TextRenderer.DrawText(graphics, "Esc", font, key, navy, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            TextRenderer.DrawText(graphics, "取消", font, new Rectangle(key.Right + S(8), bounds.Y, S(45), bounds.Height), navy, TextFormatFlags.VerticalCenter);
         }
 
         // ==================== 多边形画线模式 ====================
@@ -258,7 +289,8 @@ namespace WplaceColorWatch
             using var vtxBrush = new SolidBrush(SelectionOuterColor);
             foreach (var v in _polygon)
             {
-                g.FillEllipse(vtxBrush, v.X - 3, v.Y - 3, 6, 6);
+                if (_pixelStyle) g.FillRectangle(vtxBrush, v.X - 4, v.Y - 4, 8, 8);
+                else g.FillEllipse(vtxBrush, v.X - 3, v.Y - 3, 6, 6);
             }
 
             // 首顶点：靠近时高亮提示可闭合
@@ -268,12 +300,14 @@ namespace WplaceColorWatch
                 if (_nearClose)
                 {
                     using var hintPen = new Pen(Color.Lime, 2);
-                    g.DrawEllipse(hintPen, f.X - CloseSnapPx, f.Y - CloseSnapPx, CloseSnapPx * 2, CloseSnapPx * 2);
+                    if (_pixelStyle) g.DrawRectangle(hintPen, f.X - CloseSnapPx, f.Y - CloseSnapPx, CloseSnapPx * 2, CloseSnapPx * 2);
+                    else g.DrawEllipse(hintPen, f.X - CloseSnapPx, f.Y - CloseSnapPx, CloseSnapPx * 2, CloseSnapPx * 2);
                 }
                 else
                 {
                     using var firstBrush = new SolidBrush(SelectionAccentColor);
-                    g.FillEllipse(firstBrush, f.X - 4, f.Y - 4, 8, 8);
+                    if (_pixelStyle) g.FillRectangle(firstBrush, f.X - 4, f.Y - 4, 8, 8);
+                    else g.FillEllipse(firstBrush, f.X - 4, f.Y - 4, 8, 8);
                 }
             }
         }

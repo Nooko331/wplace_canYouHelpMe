@@ -1,0 +1,78 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:Wplace.ToolbarPrototype" x:Class="Wplace.ToolbarPrototype.MainWindow"
+        Title="wplace · Avalonia 工具栏样板（模拟演示）"
+        WindowDecorations="None" CanResize="False" SizeToContent="WidthAndHeight"
+        WindowStartupLocation="CenterScreen" Background="#B9C8DF">
+  <Border Name="ToolbarFrame" BorderBrush="#1B3B64" BorderThickness="1" Background="#FFFFFF" Padding="2" Margin="0,0,2,2">
+    <Border BorderBrush="#DCE8F7" BorderThickness="1" Background="#FBFDFF" Padding="8,8,6,8">
+      <StackPanel Name="ToolbarRow" Orientation="Horizontal" VerticalAlignment="Center">
+        <Button Name="DragGrip" Classes="pixel grip" Margin="0,0,8,0" AutomationProperties.Name="拖动工具栏">
+          <local:PixelIcon Kind="grip" Width="18" Height="24" />
+        </Button>
+        <Border Name="HoverTip">
+          <Button Name="HoverSwatch" Classes="pixel swatch" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="悬停颜色">
+            <Border Name="HoverFill" Background="#AC7A84" Width="26" Height="30" />
+          </Button>
+        </Border>
+        <Border Name="BaseTip" Margin="4,0,0,0">
+          <Button Name="BaseSwatch" Classes="pixel swatch" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="移开后底色">
+            <Border Name="BaseFill" Background="#600018" Width="26" Height="30" />
+          </Button>
+        </Border>
+        <Border Name="PaletteTip" Margin="5,0,0,0">
+          <Button Name="PaletteButton" Classes="pixel" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="颜色管理">
+            <local:PixelIcon Kind="palette" />
+          </Button>
+        </Border>
+        <Border Classes="divider" />
+        <Border Name="RangeTip">
+          <Button Name="RangeButton" Classes="pixel" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="划取检测范围">
+            <local:PixelIcon Kind="range" />
+          </Button>
+        </Border>
+        <Button Name="EyeButton" Classes="pixel selected" Margin="4,0,0,0" AutomationProperties.Name="显示范围与扫描点">
+          <local:PixelIcon Kind="eye" />
+        </Button>
+        <Border Classes="divider" />
+        <Border Name="StepTip" Background="#FFFFFF" BorderBrush="#8198B7" BorderThickness="1" Height="40">
+          <Grid ColumnDefinitions="29,43,20" Margin="1">
+            <Border Background="#EDF3FD" BorderBrush="#BBCDE3" BorderThickness="0,0,1,0">
+              <local:PixelIcon Kind="step" Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <TextBox Name="StepInput" Grid.Column="1" Classes="step" Text="10" MaxLength="3" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="扫描步长，像素" />
+            <StackPanel Grid.Column="2">
+              <Button Name="StepUp" Classes="pixel mini" Height="18" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="增加扫描步长"><local:PixelIcon Kind="up" Width="14" Height="14" /></Button>
+              <Button Name="StepDown" Classes="pixel mini" Height="18" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="减少扫描步长"><local:PixelIcon Kind="down" Width="14" Height="14" /></Button>
+            </StackPanel>
+          </Grid>
+        </Border>
+        <Border Classes="divider" />
+        <Border Name="BalancedTip"><Button Name="BalancedButton" Classes="pixel selected" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="平衡速度"><local:PixelIcon Kind="gauge" /></Button></Border>
+        <Border Name="ExtremeTip" Margin="4,0,0,0"><Button Name="ExtremeButton" Classes="pixel" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="极致速度"><local:PixelIcon Kind="bolt" /></Button></Border>
+        <Border Classes="divider" />
+        <Border Name="RunTip"><Button Name="RunButton" Classes="pixel selected" Width="44" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="开始自动填涂演示"><local:PixelIcon Kind="play" /></Button></Border>
+        <Border Name="MissingTip" Margin="5,0,0,0"><Button Name="MissingButton" Classes="pixel" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="检测遗漏演示"><local:PixelIcon Kind="missing" /></Button></Border>
+        <Border Classes="divider" />
+        <Border Name="ProgressTip" BorderBrush="#829AB9" BorderThickness="1" Background="#EDF4FF" Width="142" Height="25" VerticalAlignment="Center" Padding="2">
+          <Grid Name="ProgressTrack" ClipToBounds="True">
+            <Border Name="ProgressFill" Background="#096CF7" HorizontalAlignment="Left" Width="83" />
+            <TextBlock Name="PercentText" Text="{Binding Percent}" FontFamily="Consolas" FontSize="16" Foreground="#183456" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <TextBlock Name="PercentOnFillText" Text="{Binding Percent}" FontFamily="Consolas" FontSize="16" Foreground="White" TextAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" />
+          </Grid>
+        </Border>
+        <Border Name="TimeTip" Margin="10,0,0,0" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <local:PixelIcon Kind="clock" Width="22" Height="26" VerticalAlignment="Center" />
+            <Border BorderBrush="#ACBED5" BorderThickness="1" Background="White" Padding="3,3" Width="84" Height="32">
+              <TextBlock Name="TimeText" Text="{Binding Remaining}" FontFamily="Consolas" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+          </StackPanel>
+        </Border>
+        <Border Classes="divider" />
+        <Button Name="ExpandButton" Classes="pixel" AutomationProperties.Name="打开样板预览面板"><local:PixelIcon Kind="expand" /></Button>
+        <Button Name="MinimizeButton" Classes="pixel" Margin="4,0,0,0" AutomationProperties.Name="最小化"><local:PixelIcon Kind="minimize" /></Button>
+        <Button Name="CloseButton" Classes="pixel close" Margin="4,0,0,0" AutomationProperties.Name="关闭样板"><local:PixelIcon Kind="close" /></Button>
+      </StackPanel>
+    </Border>
+  </Border>
+</Window>

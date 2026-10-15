@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>wplace_canYouHelpMe.Avalonia</AssemblyName>
+    <RootNamespace>Wplace.Desktop</RootNamespace>
+    <Version>1.7.2</Version>
+    <FileVersion>1.7.2.0</FileVersion>
+    <AssemblyVersion>1.7.2.0</AssemblyVersion>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../WplaceColorWatch.csproj" />
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <EmbeddedResource Include="ReleaseNotes.txt" LogicalName="Wplace.Desktop.ReleaseNotes.txt" />
+    <InternalsVisibleTo Include="Desktop.IntegrationTests" />
+  </ItemGroup>
+  <Target Name="NameVersionedDesktopBundle" AfterTargets="PrepareForBundle" Condition="'$(PublishSingleFile)' == 'true'">
+    <PropertyGroup>
+      <PublishedSingleFileName>wplace_canYouHelpMe_Avalonia_v$(Version)$(_NativeExecutableExtension)</PublishedSingleFileName>
+      <PublishedSingleFilePath>$(PublishDir)$(PublishedSingleFileName)</PublishedSingleFilePath>
+      <AppHostFile>$(PublishedSingleFileName)</AppHostFile>
+    </PropertyGroup>
+    <ItemGroup>
+      <FilesToBundle Condition="'%(FilesToBundle.RelativePath)' == '$(AssemblyName)$(_NativeExecutableExtension)'"><RelativePath>$(PublishedSingleFileName)</RelativePath></FilesToBundle>
+    </ItemGroup>
+  </Target>
+  <Target Name="RemoveBundledSidecars" AfterTargets="Publish" Condition="'$(PublishSingleFile)' == 'true'">
+    <Delete Files="$(PublishDir)libHarfBuzzSharp.pdb;$(PublishDir)libSkiaSharp.pdb;$(PublishDir)$(AssemblyName).deps.json;$(PublishDir)$(AssemblyName).runtimeconfig.json;$(PublishDir)wplace_canYouHelpMe.runtimeconfig.json" />
+  </Target>
+</Project>

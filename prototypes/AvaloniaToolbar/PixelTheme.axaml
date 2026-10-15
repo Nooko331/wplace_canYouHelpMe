@@ -1,0 +1,147 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Style Selector="Window">
+    <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
+    <Setter Property="Foreground" Value="#183456" />
+    <Setter Property="Background" Value="#F4F8FE" />
+    <Setter Property="UseLayoutRounding" Value="True" />
+  </Style>
+  <Style Selector="Button.pixel">
+    <Setter Property="Width" Value="38" />
+    <Setter Property="Height" Value="40" />
+    <Setter Property="Padding" Value="6" />
+    <Setter Property="Background" Value="#EDF3FD" />
+    <Setter Property="Foreground" Value="#27486F" />
+    <Setter Property="BorderBrush" Value="#718BAC" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Grid>
+          <Border Background="#AEBFD6" Margin="2,2,0,0" />
+          <Border Name="Face" Margin="0,0,2,2" Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1">
+            <Grid>
+              <Border Name="LightEdge" BorderBrush="#FFFFFF" BorderThickness="2,2,0,0" Margin="1" />
+              <Border Name="DarkEdge" BorderBrush="#BDCCE0" BorderThickness="0,0,2,2" Margin="1" />
+              <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                Padding="{TemplateBinding Padding}"
+                                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+              <Border Name="FocusRing" Margin="4" BorderBrush="#0068FF" BorderThickness="1" IsVisible="False" IsHitTestVisible="False"/>
+            </Grid>
+          </Border>
+        </Grid>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Button.pixel:pointerover /template/ Border#Face">
+    <Setter Property="Background" Value="#DCEAFF" />
+    <Setter Property="BorderBrush" Value="#0068FF" />
+  </Style>
+  <Style Selector="Button.pixel:pressed /template/ Border#Face">
+    <Setter Property="Margin" Value="2,2,0,0" />
+    <Setter Property="Background" Value="#D2E2FA" />
+  </Style>
+  <Style Selector="Button.pixel:focus-visible /template/ Border#FocusRing">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+  <Style Selector="Button.pixel.selected">
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="Background" Value="#086BFA" />
+    <Setter Property="BorderBrush" Value="#13376E" />
+  </Style>
+  <Style Selector="Button.pixel.selected /template/ Border#LightEdge">
+    <Setter Property="BorderBrush" Value="#62A6FF" />
+  </Style>
+  <Style Selector="Button.pixel.selected /template/ Border#DarkEdge">
+    <Setter Property="BorderBrush" Value="#0047C5" />
+  </Style>
+  <Style Selector="Button.pixel.selected:pointerover /template/ Border#Face">
+    <Setter Property="Background" Value="#167AFE" />
+  </Style>
+  <Style Selector="Button.pixel.selected:pressed /template/ Border#Face">
+    <Setter Property="Background" Value="#0055DE" />
+  </Style>
+  <Style Selector="Button.pixel.selected:focus-visible /template/ Border#FocusRing">
+    <Setter Property="BorderBrush" Value="White" />
+  </Style>
+  <Style Selector="Button.pixel:disabled">
+    <Setter Property="Opacity" Value="0.42" />
+    <Setter Property="Cursor" Value="Arrow" />
+  </Style>
+  <Style Selector="Button.pixel.close:pointerover">
+    <Setter Property="Foreground" Value="#BD2435" />
+  </Style>
+  <Style Selector="Button.pixel.close:pointerover /template/ Border#Face">
+    <Setter Property="Background" Value="#FFE9ED" />
+    <Setter Property="BorderBrush" Value="#D56B7C" />
+  </Style>
+  <Style Selector="Button.pixel.swatch">
+    <Setter Property="Width" Value="36" />
+    <Setter Property="Padding" Value="3" />
+  </Style>
+  <Style Selector="Button.pixel.text">
+    <Setter Property="Width" Value="NaN" />
+    <Setter Property="MinWidth" Value="100" />
+    <Setter Property="Padding" Value="16,6" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+  <Style Selector="Button.pixel.mini">
+    <Setter Property="Width" Value="20" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="Padding" Value="3" />
+  </Style>
+  <Style Selector="Button.pixel.grip">
+    <Setter Property="Width" Value="18" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Cursor" Value="SizeAll" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="Transparent">
+          <ContentPresenter Content="{TemplateBinding Content}" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Border.divider">
+    <Setter Property="Width" Value="1" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="Background" Value="#BFCEE1" />
+    <Setter Property="Margin" Value="8,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ToolTip">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="MaxWidth" Value="320" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <ContentPresenter Content="{TemplateBinding Content}" />
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="TextBox.step">
+    <Setter Property="FontFamily" Value="Consolas" />
+    <Setter Property="FontSize" Value="19" />
+    <Setter Property="Foreground" Value="#183456" />
+    <Setter Property="Background" Value="White" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="SelectionBrush" Value="#BBD7FF" />
+  </Style>
+  <Style Selector="TextBox.step:focus /template/ Border#PART_BorderElement">
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Background" Value="#F4F8FF" />
+  </Style>
+</Styles>

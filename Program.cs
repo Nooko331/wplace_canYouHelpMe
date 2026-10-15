@@ -93,7 +93,7 @@ static class Program
         }
     }
 
-    private static Options ParseArgs(string[] args)
+    internal static Options ParseArgs(string[] args)
     {
         var options = new Options();
         for (int i = 0; i < args.Length; i++)

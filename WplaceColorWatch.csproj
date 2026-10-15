@@ -14,12 +14,17 @@
     <FileVersion>$(AppVersion).0</FileVersion>
     <AssemblyVersion>$(AppVersion).0</AssemblyVersion>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Remove="tests/**/*.cs" />
+    <Compile Remove="prototypes/**/*.cs" />
+    <Compile Remove="Desktop/**/*.cs" />
     <EmbeddedResource Include="ReleaseNotes.txt" LogicalName="WplaceColorWatch.ReleaseNotes.txt" />
     <InternalsVisibleTo Include="ReleaseNotes.RegressionTests" />
+    <InternalsVisibleTo Include="wplace_canYouHelpMe.Avalonia" />
+    <InternalsVisibleTo Include="Desktop.IntegrationTests" />
   </ItemGroup>
 
   <!-- 直接以版本化文件名生成单文件包，保持内部程序集名称不变。 -->

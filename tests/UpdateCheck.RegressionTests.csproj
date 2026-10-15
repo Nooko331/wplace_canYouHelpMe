@@ -10,6 +10,7 @@
     <Compile Remove="ColorMatching/**/*.cs" />
     <Compile Remove="OverlayCapture/**/*.cs" />
     <Compile Remove="ReleaseNotes/**/*.cs" />
+    <Compile Remove="Desktop/**/*.cs" />
     <Compile Include="../ReleaseUpdateChecker.cs" Link="ReleaseUpdateChecker.cs" />
     <Compile Include="../Logger.cs" Link="Logger.cs" />
   </ItemGroup>

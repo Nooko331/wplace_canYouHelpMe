@@ -40,11 +40,11 @@ namespace WplaceColorWatch
         /// <summary>
         /// 从磁盘加载设置；文件缺失/损坏/无权限时返回默认实例，绝不抛异常。
         /// </summary>
-        public static UserSettings Load()
+        public static UserSettings Load(string? filePath = null)
         {
             try
             {
-                var path = GetFilePath();
+                var path = filePath ?? GetFilePath();
                 if (!File.Exists(path))
                 {
                     return new UserSettings();
@@ -72,11 +72,12 @@ namespace WplaceColorWatch
         /// <summary>
         /// 写入磁盘；任何异常被吞掉并记入错误日志，绝不中断关闭流程。
         /// </summary>
-        public void Save()
+        public void Save(string? filePath = null)
         {
             try
             {
-                var path = GetFilePath();
+                var path = filePath ?? GetFilePath();
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                 var json = JsonSerializer.Serialize(this, JsonOptions);
                 File.WriteAllText(path, json);
             }

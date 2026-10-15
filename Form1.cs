@@ -73,7 +73,13 @@ public partial class Form1 : Form
     }
 
     internal Form1(Options options, uint showMainWindowMessage, ReleaseNotesHistory releaseNotesHistory)
+        : this(options, showMainWindowMessage, releaseNotesHistory, null)
     {
+    }
+
+    internal Form1(Options options, uint showMainWindowMessage, ReleaseNotesHistory releaseNotesHistory, WindowsEngineHost? desktopHost)
+    {
+        _desktopHost = desktopHost;
         _options = options;
         _showMainWindowMessage = showMainWindowMessage;
         _releaseNotesHistory = releaseNotesHistory;
@@ -87,7 +93,7 @@ public partial class Form1 : Form
         StartPosition = FormStartPosition.CenterScreen;
         MaximizeBox = false;
         KeyPreview = true;
-        TrySetEnglishInputLanguage();
+        if (_desktopHost == null) TrySetEnglishInputLanguage();
         labelRec.Parent = panelLeft;
         labelRec.Location = new Point(4, 4);
         labelRec.BackColor = Color.Transparent;
@@ -166,7 +172,7 @@ public partial class Form1 : Form
         // happened before WinForms could resolve the target monitor DPI.
         Load += (_, _) => ApplyLayout(_layoutMode);
 
-        SetHook();
+        if (_desktopHost == null || _desktopHost.EnableHotkeys) SetHook();
         Shown += (_, _) =>
         {
             BeginInvoke((Action)(() =>
@@ -233,6 +239,7 @@ public partial class Form1 : Form
 
     private void EnsureVisibleAndActivated()
     {
+        if (_desktopHost != null) { _desktopHost.RequestActivation(); return; }
         if (InvokeRequired)
         {
             BeginInvoke((Action)EnsureVisibleAndActivated);
@@ -304,6 +311,7 @@ public partial class Form1 : Form
 
     private void UpdateTimerOnTick(object? sender, EventArgs e)
     {
+        if (_desktopHost?.ReadOnly == true) { PublishDesktopSnapshot(); return; }
         var pos = Cursor.Position;
         var bgr = GetPixelAt(pos.X, pos.Y);
         _state.UpdateCurrent(bgr, pos);
@@ -352,6 +360,7 @@ public partial class Form1 : Form
 
         UpdateUi(snapshot, match);
         UpdateOverlayFromState(snapshot);
+        PublishDesktopSnapshot();
     }
 
     private void TryFireSpace()
@@ -610,12 +619,18 @@ public partial class Form1 : Form
 
     private bool IsCursorOverSelf(Point pos)
     {
+        if (_desktopHost != null)
+        {
+            var window = NativeMethods.WindowFromPoint(new NativeMethods.POINT { X = pos.X, Y = pos.Y });
+            NativeMethods.GetWindowThreadProcessId(window, out uint processId);
+            return processId == (uint)Environment.ProcessId;
+        }
         return Bounds.Contains(pos);
     }
 
     private bool IsOperationActive()
     {
-        return _autoAllCts != null || _islandCts != null;
+        return _autoAllCts != null || _islandCts != null || (_desktopHost != null && _desktopTasks > 0);
     }
 
     private void SetOperationControlsEnabled(bool enabled)
@@ -659,7 +674,10 @@ public partial class Form1 : Form
         Logger.Debug("[range] overlay disposed, checkbox unchecked, opening SelectionForm");
 
         var screen = Screen.FromPoint(Cursor.Position);
-        using var sel = new SelectionForm(screen.Bounds, _options.ScanStep);
+        // Wait for Avalonia's hidden main window to leave the composed desktop
+        // before taking the native selection snapshot.
+        if (_desktopHost != null && NativeMethods.DwmFlush() != 0) Thread.Sleep(30);
+        using var sel = new SelectionForm(screen.Bounds, _options.ScanStep, pixelStyle: _desktopHost != null);
         _selectingRange = true;
         try
         {
@@ -1204,7 +1222,7 @@ public partial class Form1 : Form
     /// </summary>
     private void LoadUserSettings()
     {
-        _settings = UserSettings.Load();
+        _settings = _desktopHost?.ReadOnly == true ? new UserSettings() : UserSettings.Load(_desktopHost?.SettingsPath);
         _options.ScanStep = _settings.ScanStep;
         // ScanWorkers 按 CPU 核数钳制，与 ReadScanWorkers 的上限一致，避免换机器后首次填充报“输入无效”
         int maxWorkers = Math.Max(1, Environment.ProcessorCount - 1);
@@ -1241,7 +1259,7 @@ public partial class Form1 : Form
         _settings.ShowRange = checkShowRange.Checked;
         _settings.SpeedPreset = radioSpeedExtreme.Checked ? UserSettings.SpeedExtreme : UserSettings.SpeedBalanced;
         // SkipIslandRecommendation 已在用户勾选“不再提示”时写入
-        _settings.Save();
+        if (_desktopHost?.ReadOnly != true) _settings.Save(_desktopHost?.SettingsPath);
         Logger.Debug($"[settings] saved step={_settings.ScanStep} workers={_settings.ScanWorkers} showRange={_settings.ShowRange} speed={_settings.SpeedPreset} skipIslandRec={_settings.SkipIslandRecommendation}");
     }
 
@@ -1609,7 +1627,9 @@ public partial class Form1 : Form
 
     private void CleanupResources()
     {
+        if (_closing) return;
         _closing = true;
+        updateTimer.Stop();
         // 关闭时持久化用户设置（吞掉异常，绝不影响关闭流程）
         SaveUserSettings();
         _startupActivationTimer?.Stop();
@@ -1627,7 +1647,7 @@ public partial class Form1 : Form
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         // 更新说明显示期间放行按键，避免 A 触发取色，并让 Esc 正常关闭弹窗。
-        if (_releaseNotesDialog != null)
+        if (_releaseNotesDialog != null || _desktopHost?.PromptOpen == true || (_desktopHost?.HotkeysSuspended == true && !IsColorRulePicking))
         {
             return NativeMethods.CallNextHookEx(_hookId, nCode, wParam, lParam);
         }
@@ -1652,7 +1672,7 @@ public partial class Form1 : Form
                 }
                 if (IsColorRulePicking)
                 {
-                    BeginInvoke((Action)(() => ExitColorPicking(true)));
+                    BeginInvoke((Action)(() => { ExitColorPicking(true); PublishDesktopSnapshot(); }));
                     return (IntPtr)1;
                 }
                 if (IsColorManagerVisible)
@@ -1660,6 +1680,8 @@ public partial class Form1 : Form
                     BeginInvoke((Action)CloseColorManager);
                     return (IntPtr)1;
                 }
+                if (_desktopHost != null && !IsOperationActive())
+                    return NativeMethods.CallNextHookEx(_hookId, nCode, wParam, lParam);
                 Logger.Debug($"[hook] ESC pressed, stopping all");
                 BeginInvoke((Action)(() =>
                 {
@@ -1670,6 +1692,8 @@ public partial class Form1 : Form
                     SetOperationControlsEnabled(true);
                     Logger.Debug("[hook] ESC: all stopped, restoring overlay if needed");
                     RestorePreviewOverlayIfChecked();
+                    _desktopStatus = "已停止";
+                    PublishDesktopSnapshot();
                 }));
                 // 填充状态下只保留 ESC 的响应，不再把 ESC 透传给其他窗口
                 return (IntPtr)1;
@@ -1693,6 +1717,8 @@ public partial class Form1 : Form
             // }
             if (vkCode == NativeMethods.VK_A && !injected)
             {
+                if (_desktopHost?.EditingInput == true && !IsColorRulePicking && IsDesktopApplicationForeground())
+                    return NativeMethods.CallNextHookEx(_hookId, nCode, wParam, lParam);
                 var triggerPosition = Cursor.Position;
                 var triggeredAtMs = Environment.TickCount64;
                 if (QueueColorRulePick(triggerPosition, triggeredAtMs))
@@ -1968,6 +1994,8 @@ public partial class Form1 : Form
         }
 
         SetOperationControlsEnabled(false);
+        _desktopStatus = "正在扫描";
+        _desktopTasks++;
         HidePreviewOverlay();
 
         CancelAutoAll();
@@ -1979,6 +2007,7 @@ public partial class Form1 : Form
         _autoAllProgressActive = true;
         Logger.Debug($"[auto_all] starting scan for all colors...");
 
+        string? failure = null;
         Task.Run(() =>
         {
             try
@@ -2013,6 +2042,7 @@ public partial class Form1 : Form
             catch (Exception ex)
             {
                 Logger.Error($"[auto_all] error: {ex}");
+                failure = ex.Message;
             }
             finally
             {
@@ -2020,14 +2050,18 @@ public partial class Form1 : Form
                 BeginInvoke((Action)(() =>
                 {
                     _autoAllProgressActive = false;
+                    _desktopTasks--;
+                    if (_desktopStatus != "已停止") _desktopStatus = token.IsCancellationRequested ? "已停止" : failure == null ? "任务完成" : "填涂未完成";
                     SetOperationControlsEnabled(true);
                     RestorePreviewOverlayIfChecked();
                     var cts = Interlocked.Exchange(ref _autoAllCts, null);
                     cts?.Dispose();
                     Logger.Debug("[auto_all] task cleanup done");
+                    PublishDesktopSnapshot();
+                    if (failure != null) _desktopHost?.Confirm(new EnginePrompt("填涂未完成", failure, false, null));
                 }));
             }
-        }, token);
+        });
     }
 
     // ==================== 遗漏点孤岛检测 ====================
@@ -2329,6 +2363,8 @@ public partial class Form1 : Form
         }
 
         SetOperationControlsEnabled(false);
+        _desktopStatus = "正在检测遗漏";
+        _desktopTasks++;
         HidePreviewOverlay();
 
         CancelAutoAll();
@@ -2341,6 +2377,7 @@ public partial class Form1 : Form
         _autoAllProgressActive = true;
         Logger.Debug("[island] starting detection task...");
 
+        string? failure = null;
         Task.Run(() =>
         {
             try
@@ -2354,20 +2391,25 @@ public partial class Form1 : Form
             catch (Exception ex)
             {
                 Logger.Error($"[island] error: {ex}");
+                failure = ex.Message;
             }
             finally
             {
                 BeginInvoke((Action)(() =>
                 {
                     _autoAllProgressActive = false;
+                    _desktopTasks--;
+                    if (_desktopStatus != "已停止") _desktopStatus = token.IsCancellationRequested ? "已停止" : failure == null ? "遗漏检测完成" : "检测未完成";
                     SetOperationControlsEnabled(true);
                     RestorePreviewOverlayIfChecked();
                     var cts = Interlocked.Exchange(ref _islandCts, null);
                     cts?.Dispose();
                     Logger.Debug("[island] task cleanup done");
+                    PublishDesktopSnapshot();
+                    if (failure != null) _desktopHost?.Confirm(new EnginePrompt("检测未完成", failure, false, null));
                 }));
             }
-        }, token);
+        });
     }
 
     private List<BgrColor> GetPredefinedColors()
