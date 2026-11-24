@@ -12,16 +12,29 @@ internal sealed class NotesWindow : PixelWindow
 {
     internal NotesWindow() : base("更新说明 · v" + Program.Version, 680, "notes")
     {
-        Body.Children.Add(new Border { Background = Ui.Pale, Padding = new Thickness(16, 12), Child = Ui.Text("新版发布提醒", 18, true) });
         using var stream = typeof(NotesWindow).Assembly.GetManifestResourceStream("Wplace.Desktop.ReleaseNotes.txt") ?? throw new InvalidOperationException("缺少更新说明资源。");
         using var reader = new StreamReader(stream);
-        var paragraphs = reader.ReadToEnd().Replace("\r\n", "\n").Split("\n\n", StringSplitOptions.RemoveEmptyEntries);
-        foreach (var paragraph in paragraphs)
+        var notes = reader.ReadToEnd().ReplaceLineEndings("\n");
+        Body.Spacing = 8;
+        foreach (var section in ("\n" + notes).Split("\n## ", StringSplitOptions.RemoveEmptyEntries))
         {
-            bool heading = !paragraph.Contains('\n') && paragraph.Length < 25;
-            var text = Ui.Text(paragraph.Trim(), heading ? 17 : 14, heading);
-            if (!heading) text.Foreground = Ui.Muted;
-            Body.Children.Add(text);
+            var lines = section.Split('\n', 2);
+            var title = lines[0].Trim();
+            var content = new StackPanel { Spacing = 10 };
+            foreach (var paragraph in lines[1].Split("\n\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                bool heading = !paragraph.Contains('\n') && paragraph.Length < 25 && !paragraph.EndsWith('。');
+                content.Children.Add(heading ? Ui.Text(paragraph, 15, true) : Ui.Text(paragraph, 14));
+            }
+            var item = new Expander
+            {
+                Header = Ui.Text(title, 16, true), Content = content,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                IsExpanded = title.Split(' ', 2)[0] == "v" + Program.Version
+            };
+            AutomationProperties.SetName(item, title);
+            Body.Children.Add(item);
         }
         var ok = Ui.Button("知道了", Close, primary: true, id: "AcknowledgeNotes"); ok.HorizontalAlignment = HorizontalAlignment.Right;
         Footer.Child = ok; Footer.IsVisible = true;

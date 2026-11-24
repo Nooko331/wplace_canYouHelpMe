@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Automation;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -142,6 +143,17 @@ internal static class DesktopReview
 
             Click(main, "ReleaseNotes"); await Until(() => main.OwnedWindows.OfType<NotesWindow>().Any());
             var liveNotes = main.OwnedWindows.OfType<NotesWindow>().Single(); liveNotes.UpdateLayout();
+            var releases = liveNotes.GetVisualDescendants().OfType<Expander>().ToArray();
+            var versions = releases.Select(e => Version.Parse(AutomationProperties.GetName(e)!.Split(' ')[0][1..])).ToArray();
+            Check(versions.SequenceEqual(versions.Distinct().OrderDescending()) && versions[0].ToString() == Program.Version
+                && releases[0].IsExpanded && releases.Skip(1).All(e => !e.IsExpanded), "Release history is newest first with only the current version expanded");
+            var previous = releases.Single(e => AutomationProperties.GetName(e)!.StartsWith("v1.7.3 "));
+            var toggle = previous.GetVisualDescendants().OfType<ToggleButton>().First();
+            toggle.IsChecked = true;
+            await Until(() => previous.IsExpanded);
+            Check(releases[0].IsExpanded && ((StackPanel)previous.Content!).Children.OfType<TextBlock>().Any(t => t.Text!.Contains("孤岛")), "Previous release expands independently with its original notes");
+            toggle.IsChecked = false;
+            await Until(() => !previous.IsExpanded);
             Click(liveNotes, "AcknowledgeNotes"); await Until(() => !liveNotes.IsVisible && !main.Engine.HotkeysSuspended);
             Check(!main.Engine.HotkeysSuspended, "Manual notes entry and fixed acknowledgement button work");
 

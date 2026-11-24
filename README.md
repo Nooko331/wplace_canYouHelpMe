@@ -171,7 +171,7 @@ WPlace 填涂助手可以配合 **Blue Marble 或 WPlace 官方蒙版**使用，
 
 ### 更新说明与版本检查
 
-**更新说明**离线内置，每版首次启动自动弹出；以后可从完整模式底部重新查看。
+**更新说明**可以离线查看。打开完整布局底部的“更新说明”，当前版本默认展开，旧版本按从新到旧排列。点击任意版本标题即可展开或收起，也可以同时展开多个版本。每版首次启动会自动显示一次。
 
 **版本检查**在正常启动后于后台访问 GitHub Releases。若本次显示了更新说明，会在关闭说明后开始检查。
 
@@ -244,7 +244,7 @@ ZIP 仅包含 EXE，不包含用户设置、日志或更新说明查看记录。
 
 ### 维护版本与更新说明
 
-1. 编辑 [Desktop/ReleaseNotes.txt](Desktop/ReleaseNotes.txt)，维护本版用户可见的更新说明。
+1. 在更新说明文件顶部新增一段，标题格式为 `## v版本号 更新主题`，正文用空行分段。保留旧版本的标题和正文，程序会自动为每个版本生成可展开的条目。[更新说明文件](Desktop/ReleaseNotes.txt)
 2. 同步更新桌面项目的 `Version`、`FileVersion`、`AssemblyVersion` 和 Windows 清单中的 `assemblyIdentity.version`，再更新 README。界面从程序集读取版本号。[桌面项目](Desktop/Wplace.Desktop.csproj) · [Windows 清单](Desktop/app.manifest)
 3. 重新打包并预览实际 EXE。说明嵌入程序，修改文本后已生成的 EXE 不会自动变化。
 
@@ -264,7 +264,7 @@ dotnet run --project .\tests\Desktop\Desktop.IntegrationTests.csproj -c Release
 .\publish\avalonia-v1.7.4\wplace_canYouHelpMe_Avalonia_v1.7.4.exe --capture "$PWD\artifacts\avalonia-review"
 ```
 
-v1.7.4 发布包通过了 35 项界面与交互检查，包括同版本保留 GitHub 按钮、模拟更高版本后按钮背景随时间改变。另有 9 项更新检查回归测试通过。ZIP 中的 EXE 与独立 EXE 的 SHA-256 一致。
+v1.7.4 发布包通过了 37 项界面与交互检查，包括历史更新说明独立展开与收起、同版本保留 GitHub 按钮，以及模拟更高版本后按钮背景随时间改变。另有 9 项更新检查回归测试通过。ZIP 中的 EXE 与独立 EXE 的 SHA-256 一致。
 
 其他回归测试、架构与历次验证记录见 [Avalonia 桌面版说明](Desktop/README.md)。
 
