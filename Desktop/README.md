@@ -1,16 +1,16 @@
 # Avalonia 桌面版
 
-这是接入原有填涂功能的正式界面工程，版本为 **1.7.3**。可配合 Blue Marble 或 WPlace 官方蒙版使用。早期外观样板继续保留在 `prototypes/AvaloniaToolbar`。
+这是接入原有填涂功能的正式界面工程，版本为 **1.7.4**。可配合 Blue Marble 或 WPlace 官方蒙版使用。早期外观样板继续保留在 `prototypes/AvaloniaToolbar`。
 
 ## 启动与打包
 
 已打包的 Windows x64 版本位于：
 
 ```text
-publish/avalonia-v1.7.3/wplace_canYouHelpMe_Avalonia_v1.7.3.exe
+publish/avalonia-v1.7.4/wplace_canYouHelpMe_Avalonia_v1.7.4.exe
 ```
 
-这是自包含程序，使用者无需安装 .NET。正常双击会启用原有取色、范围选择、扫描和填涂功能。每次启动默认进入完整模式；本版首次启动先引导选择蒙版类型，选好后显示更新说明。
+这是自包含程序，使用者无需安装 .NET。正常双击会启用原有取色、范围选择、扫描和填涂功能。每次启动默认进入完整模式；本版首次启动会显示更新说明。若尚未保存蒙版类型，先完成蒙版选择。
 
 开发需要 .NET 10 SDK；当前工作区也提供了忽略提交的 `artifacts/dotnet10/dotnet.exe`：
 
@@ -55,9 +55,9 @@ publish/avalonia-v1.7.3/wplace_canYouHelpMe_Avalonia_v1.7.3.exe
 只检查界面、不启用桌面读取、快捷键或填涂：
 
 ```powershell
-& '.\publish\avalonia-v1.7.3\wplace_canYouHelpMe_Avalonia_v1.7.3.exe' --preview-ui
-& '.\publish\avalonia-v1.7.3\wplace_canYouHelpMe_Avalonia_v1.7.3.exe' --preview-release-notes
-& '.\publish\avalonia-v1.7.3\wplace_canYouHelpMe_Avalonia_v1.7.3.exe' --capture "$PWD\artifacts\avalonia-review"
+& '.\publish\avalonia-v1.7.4\wplace_canYouHelpMe_Avalonia_v1.7.4.exe' --preview-ui
+& '.\publish\avalonia-v1.7.4\wplace_canYouHelpMe_Avalonia_v1.7.4.exe' --preview-release-notes
+& '.\publish\avalonia-v1.7.4\wplace_canYouHelpMe_Avalonia_v1.7.4.exe' --capture "$PWD\artifacts\avalonia-review"
 ```
 
 `--capture`/`--smoke-test` 使用真实 Avalonia 控件渲染所有页面，并输出 `checks.json`、`layout.json` 和 PNG；失败写 `failure.txt` 并返回非零退出码。精简进度示例使用模拟数值，应用正常启动时只显示内核实际进度。
@@ -109,3 +109,9 @@ dotnet run --project tests\ReleaseNotes\ReleaseNotes.RegressionTests.csproj -c R
 | Windows x64 发布包 | 文件版本为 `1.7.3.0`。ZIP 中只有一个 EXE，其 SHA-256 与独立 EXE 一致 |
 
 界面检查结果在 `artifacts/avalonia-v173-final/checks.json`，本版界面截图见[项目 README](../README.md)。受控画布验证了候选点识别和取消补涂，实际 WPlace 网页上的补涂效果尚待验证。
+
+### 1.7.4 验证记录
+
+Windows x64 发布包通过 35/35 项只读界面检查。模拟同版本时，页脚保留 GitHub 按钮。模拟更高版本时，检查确认了按钮上的版本号、辅助功能名称，以及橙色背景在不同时间点的颜色变化。[更新提示截图](../README/v1.7.4/update-available.png)
+
+更新检查回归测试通过 9/9 项，覆盖发布页重定向、API 回退和离线错误处理。发布文件版本为 `1.7.4.0`，ZIP 内外的 EXE 哈希一致。界面检查记录位于 `artifacts/avalonia-v174-final/checks.json`。

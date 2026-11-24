@@ -6,30 +6,36 @@
 
 WPlace 填涂助手可以配合 **Blue Marble 或 WPlace 官方蒙版**使用，支持屏幕取色、范围选择、颜色筛选、自动填涂和遗漏检测。
 
-当前版本 **1.7.3**，采用 Avalonia 像素风界面。发布包面向 **Windows x64**，自包含 .NET 运行时，解压后即可运行。
+当前版本 **1.7.4**，采用 Avalonia 像素风界面。发布包面向 **Windows x64**，自包含 .NET 运行时，解压后即可运行。
 
 [查看已发布版本](https://github.com/Nooko331/wplace_canYouHelpMe/releases) · [反馈问题](https://github.com/Nooko331/wplace_canYouHelpMe/issues) · [开发与验证说明](Desktop/README.md)
 
-## v1.7.3 首次启动
+## v1.7.4 更新提示
 
-首次运行或从旧版升级时，完整布局会盖上黑色遮罩，只露出 **蒙版类型**，并提示“请选择当前使用的蒙版类型”。点击与网页画布一致的选项即可保存。以后打开助手会沿用该选择，更换蒙版时可在完整布局中修改。
+发现更高版本时，完整布局底部的 GitHub 按钮会显示“新版本”和版本号，橙色背景每两秒由浅变亮再变浅。点击按钮即可打开该版本的发布页。
+
+## 首次选择蒙版
+
+尚未保存蒙版选择时，完整布局会盖上黑色遮罩，只露出 **蒙版类型**，并提示“请选择当前使用的蒙版类型”。点击与网页画布一致的选项即可保存。以后打开助手会沿用该选择，更换蒙版时可在完整布局中修改。
 
 | 网页上使用的蒙版 | 点击“检测遗漏”时查找的内容 |
 | --- | --- |
 | Blue Marble | 使用孤岛检测，查找可能漏涂的小块区域 |
 | 官方蒙版 | 按扫描步长在划取范围内采样，只查找符合内置 50% 半透明色表的点 |
 
-![v1.7.3 首次启动，黑色遮罩只露出 Blue Marble 和官方蒙版两个选项](README/v1.7.3/00-first-launch.png)
+![v1.7.4 首次启动，黑色遮罩只露出 Blue Marble 和官方蒙版两个选项](README/v1.7.4/00-first-launch.png)
 
 ## 界面与操作
 
 ### 完整模式
 
-![v1.7.3 完整布局，蒙版类型位于检测范围下方，底部有蓝色检测遗漏按钮](README/v1.7.3/01-full.png)
+下图模拟 v1.7.4 检测到更高版本时的界面。
+
+![v1.7.4 完整布局，底部显示橙色的新版本按钮](README/v1.7.4/update-available.png)
 
 ### 精简模式
 
-![v1.7.3 精简工具栏，蓝色放大镜位于填涂按钮右侧](README/v1.7.3/02-compact.png)
+![v1.7.4 精简工具栏，蓝色放大镜位于填涂按钮右侧](README/v1.7.4/02-compact.png)
 
 完整模式右上角点击“精简布局”即可切换；精简模式点击展开图标返回。
 
@@ -48,19 +54,19 @@ WPlace 填涂助手可以配合 **Blue Marble 或 WPlace 官方蒙版**使用，
 
 ### 颜色管理
 
-![v1.7.3 颜色管理](README/v1.7.3/03-colors.png)
+![v1.7.4 颜色管理](README/v1.7.4/03-colors.png)
 
 ### 更新说明
 
-![v1.7.3 更新说明](README/v1.7.3/05-release-notes.png)
+![v1.7.4 更新说明](README/v1.7.4/05-release-notes.png)
 
 ### 功能介绍
 
-![v1.7.3 功能介绍中的“遗漏检测与补涂”页面](README/v1.7.3/guide-missing.png)
+![v1.7.4 功能介绍中的“遗漏检测与补涂”页面](README/v1.7.4/guide-missing.png)
 
 </details>
 
-以上截图来自 v1.7.3 Windows 程序的只读预览模式。功能介绍中的画布图为操作示意。
+以上截图来自 v1.7.4 Windows 程序的只读预览模式。功能介绍中的画布图为操作示意。
 
 ## 快速开始
 
@@ -169,7 +175,7 @@ WPlace 填涂助手可以配合 **Blue Marble 或 WPlace 官方蒙版**使用，
 
 **版本检查**在正常启动后于后台访问 GitHub Releases。若本次显示了更新说明，会在关闭说明后开始检查。
 
-- 发现更新：完整模式底部的“GitHub”入口变为“新版本 v…”，点击打开对应发布页。
+- 发现更新时，完整布局底部的按钮显示“新版本”和版本号，橙色背景缓慢交替明暗。点击即可打开该版本的发布页。
 - 未发现更新：保留“GitHub”项目入口。
 - 检查失败：不打断填涂；悬停提示可查看发布页，点击后打开最新发布页。
 - 软件不会自动下载或替换 EXE。精简模式不显示更新入口。
@@ -200,7 +206,7 @@ Blue Marble 的孤岛检测按交错点阵的六邻接关系聚类，将被非�
 例如，在 EXE 所在目录执行：
 
 ```powershell
-.\wplace_canYouHelpMe_Avalonia_v1.7.3.exe --island-color-tol 15 --island-max-size 5
+.\wplace_canYouHelpMe_Avalonia_v1.7.4.exe --island-color-tol 15 --island-max-size 5
 ```
 
 普通扫描的 `--color-tol` 默认为 0；半透明显示色只接受内置计算值及取整，不额外叠加容差。
@@ -227,11 +233,11 @@ dotnet build .\Desktop\Wplace.Desktop.csproj -c Release
 .\Desktop\Publish.ps1
 ```
 
-发布脚本优先使用工作区的 `artifacts/dotnet10/dotnet.exe`，没有时使用 PATH 中的 `dotnet`。1.7.3 的输出为：
+发布脚本优先使用工作区的 `artifacts/dotnet10/dotnet.exe`，没有时使用 PATH 中的 `dotnet`。1.7.4 的输出为：
 
 ```text
-publish/avalonia-v1.7.3/wplace_canYouHelpMe_Avalonia_v1.7.3.exe
-publish/wplace_canYouHelpMe_Avalonia_v1.7.3_win-x64.zip
+publish/avalonia-v1.7.4/wplace_canYouHelpMe_Avalonia_v1.7.4.exe
+publish/wplace_canYouHelpMe_Avalonia_v1.7.4_win-x64.zip
 ```
 
 ZIP 仅包含 EXE，不包含用户设置、日志或更新说明查看记录。脚本拒绝覆盖已有同名 ZIP；本地仅重建 EXE 可使用 `-SkipZip`，分发时应重新核对 ZIP 与 EXE 是否一致。
@@ -243,10 +249,10 @@ ZIP 仅包含 EXE，不包含用户设置、日志或更新说明查看记录。
 3. 重新打包并预览实际 EXE。说明嵌入程序，修改文本后已生成的 EXE 不会自动变化。
 
 ```powershell
-.\publish\avalonia-v1.7.3\wplace_canYouHelpMe_Avalonia_v1.7.3.exe --preview-release-notes
+.\publish\avalonia-v1.7.4\wplace_canYouHelpMe_Avalonia_v1.7.4.exe --preview-release-notes
 ```
 
-预览模式不写入真实查看记录。同一版本只修改说明不会让已查看的用户再次自动看到弹窗；正式发布新说明时应递增版本。GitHub 更新检测读取已发布的 Release 标签，版本标签使用 `v1.7.3` 这类格式。
+预览模式不写入真实查看记录。同一版本只修改说明不会让已查看的用户再次自动看到弹窗；正式发布新说明时应递增版本。GitHub 更新检测读取已发布的 Release 标签，版本标签使用 `v1.7.4` 这类格式。
 
 ### 验证
 
@@ -255,10 +261,10 @@ ZIP 仅包含 EXE，不包含用户设置、日志或更新说明查看记录。
 dotnet run --project .\tests\Desktop\Desktop.IntegrationTests.csproj -c Release
 
 # 检查实际发布 EXE 的页面和控件交互，输出截图与检查结果
-.\publish\avalonia-v1.7.3\wplace_canYouHelpMe_Avalonia_v1.7.3.exe --capture "$PWD\artifacts\avalonia-review"
+.\publish\avalonia-v1.7.4\wplace_canYouHelpMe_Avalonia_v1.7.4.exe --capture "$PWD\artifacts\avalonia-review"
 ```
 
-v1.7.3 已通过 **33/33 项界面与交互检查、29/29 项内核桥接检查、10/10 项颜色匹配测试**。在受控画布上，官方蒙版检测找出了全部 100 个半透明采样点，跳过相邻的不透明同色区域，排除该颜色后候选点数为零。已核对 ZIP 中的 EXE 与独立 EXE 的 SHA-256 一致。实际 WPlace 网页上的补涂效果尚待验证。
+v1.7.4 发布包通过了 35 项界面与交互检查，包括同版本保留 GitHub 按钮、模拟更高版本后按钮背景随时间改变。另有 9 项更新检查回归测试通过。ZIP 中的 EXE 与独立 EXE 的 SHA-256 一致。
 
 其他回归测试、架构与历次验证记录见 [Avalonia 桌面版说明](Desktop/README.md)。
 

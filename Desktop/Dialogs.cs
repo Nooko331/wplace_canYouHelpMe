@@ -12,7 +12,7 @@ internal sealed class NotesWindow : PixelWindow
 {
     internal NotesWindow() : base("更新说明 · v" + Program.Version, 680, "notes")
     {
-        Body.Children.Add(new Border { Background = Ui.Pale, Padding = new Thickness(16, 12), Child = Ui.Text("按蒙版类型检测遗漏", 18, true) });
+        Body.Children.Add(new Border { Background = Ui.Pale, Padding = new Thickness(16, 12), Child = Ui.Text("新版发布提醒", 18, true) });
         using var stream = typeof(NotesWindow).Assembly.GetManifestResourceStream("Wplace.Desktop.ReleaseNotes.txt") ?? throw new InvalidOperationException("缺少更新说明资源。");
         using var reader = new StreamReader(stream);
         var paragraphs = reader.ReadToEnd().Replace("\r\n", "\n").Split("\n\n", StringSplitOptions.RemoveEmptyEntries);

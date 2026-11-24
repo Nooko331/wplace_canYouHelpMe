@@ -101,6 +101,26 @@
     <Setter Property="Opacity" Value="0.42" />
     <Setter Property="Cursor" Value="Arrow" />
   </Style>
+  <Style Selector="Button.pixel.updateAvailable">
+    <Setter Property="Background" Value="#FFB454" />
+    <Setter Property="Foreground" Value="#402307" />
+    <Setter Property="BorderBrush" Value="#965009" />
+  </Style>
+  <Style Selector="Button.pixel.updateAvailable /template/ Border#LightEdge">
+    <Setter Property="BorderBrush" Value="#FFE4BF" />
+  </Style>
+  <Style Selector="Button.pixel.updateAvailable /template/ Border#DarkEdge">
+    <Setter Property="BorderBrush" Value="#CB7824" />
+  </Style>
+  <Style Selector="Button.pixel.updateAvailable:not(:disabled) /template/ Border#Face">
+    <Style.Animations>
+      <Animation Duration="0:0:2" IterationCount="INFINITE">
+        <KeyFrame Cue="0%"><Setter Property="Background" Value="#FFD099" /></KeyFrame>
+        <KeyFrame Cue="50%"><Setter Property="Background" Value="#FF9A35" /></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="Background" Value="#FFD099" /></KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
   <Style Selector="Button.pixel.close:pointerover">
     <Setter Property="Foreground" Value="#BD2435" />
   </Style>

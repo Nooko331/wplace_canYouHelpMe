@@ -6,9 +6,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>wplace_canYouHelpMe.Avalonia</AssemblyName>
     <RootNamespace>Wplace.Desktop</RootNamespace>
-    <Version>1.7.3</Version>
-    <FileVersion>1.7.3.0</FileVersion>
-    <AssemblyVersion>1.7.3.0</AssemblyVersion>
+    <Version>1.7.4</Version>
+    <FileVersion>1.7.4.0</FileVersion>
+    <AssemblyVersion>1.7.4.0</AssemblyVersion>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <ApplicationManifest>app.manifest</ApplicationManifest>

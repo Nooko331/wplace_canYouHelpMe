@@ -363,11 +363,16 @@ public sealed partial class MainWindow : Window
             Logger.Warning("[update] 本次自动检查更新失败，不影响取色和填涂。" + result.Failure);
             updateUrl = ReleaseUpdateChecker.LatestReleaseUrl; ToolTip.SetTip(updateLink, "暂未检查到更新，可点击查看发布页。"); return;
         }
-        if (Version.TryParse(result.Tag.TrimStart('v', 'V'), out var version) && version > new Version(Program.Version))
-        {
-            updateUrl = ReleaseUpdateChecker.RepositoryUrl + "/releases/tag/" + Uri.EscapeDataString(result.Tag);
-            updateLink.Content = "新版本 " + result.Tag;
-        }
+        ShowAvailableRelease(result.Tag);
+    }
+    internal void ShowAvailableRelease(string tag)
+    {
+        if (updateLink == null || !Version.TryParse(tag.TrimStart('v', 'V'), out var version) || version <= new Version(Program.Version)) return;
+        updateUrl = ReleaseUpdateChecker.RepositoryUrl + "/releases/tag/" + Uri.EscapeDataString(tag);
+        var label = "新版本 " + tag;
+        updateLink.Content = label;
+        AutomationProperties.SetName(updateLink, label);
+        updateLink.Classes.Add("updateAvailable");
     }
     private void OpenUrl(string url) => Run(() => { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); return Task.CompletedTask; });
     internal static string? ReadArg(string key) { var i = Array.IndexOf(Program.Arguments, key); return i >= 0 && i + 1 < Program.Arguments.Length ? Program.Arguments[i + 1] : null; }

@@ -157,6 +157,21 @@ internal static class DesktopReview
             Click(recommendation, "CancelPrompt");
             var declined = await recommendationTask;
             Check(!declined.Accepted && declined.DontShowAgain, "Declining a recommendation retains the original checkbox semantics");
+            var link = FindButton(main, "ProjectLink");
+            main.ShowAvailableRelease("v" + Program.Version);
+            Check(Equals(link.Content, "GitHub") && !link.Classes.Contains("updateAvailable"), "Current release keeps the ordinary GitHub button");
+            var current = new Version(Program.Version);
+            var newerTag = $"v{current.Major}.{current.Minor}.{current.Build + 1}";
+            main.ShowAvailableRelease(newerTag);
+            var face = link.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "Face");
+            Color UpdateColor() => ((ISolidColorBrush)face.Background!).Color;
+            bool IsOrange(Color color) => color.R == 255 && color.G > color.B && color.G < 225;
+            await Until(() => IsOrange(UpdateColor()));
+            var firstColor = UpdateColor();
+            await Until(() => IsOrange(UpdateColor()) && Math.Abs(UpdateColor().G - firstColor.G) >= 12);
+            Check(Equals(link.Content, "新版本 " + newerTag) && AutomationProperties.GetName(link) == link.Content.ToString(),
+                "A newer release pulses the button face between oranges while keeping its version label");
+            Capture(main, directory, "update-available");
             File.WriteAllText(Path.Combine(directory, "checks.json"), JsonSerializer.Serialize(new { Passed = checks.Count, Checks = checks, RenderScaling = main.RenderScaling }, new JsonSerializerOptions { WriteIndented = true }));
         }
         catch (Exception error)
