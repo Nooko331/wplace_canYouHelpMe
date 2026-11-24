@@ -26,6 +26,16 @@ internal static class DesktopReview
             Check(main.Engine.ReadOnly, "Review mode never enables desktop input or global hooks");
             Check(!main.CompactMode && main.GuideEntryVisible, "Application opens in full mode with the feature guide entry visible");
             Check(WindowsEngineHost.Palette.Count == 63, "63 canonical colors available");
+            await Task.Delay(150);
+            Check(main.State.Mask == null && main.Engine.HotkeysSuspended && !FindButton(main, "FullStart").IsEffectivelyEnabled,
+                "First launch blocks background controls and shortcuts until a mask is selected");
+            Capture(main, directory, "00-first-launch");
+            Click(main, "GuideMaskOfficial");
+            await Until(() => main.State.Mask == MaskType.Official && !main.Engine.HotkeysSuspended);
+            Check(FindButton(main, "FullMaskOfficial") is RadioButton { IsChecked: true }, "Selecting the official mask dismisses the spotlight and selects the full-layout radio");
+            Click(main, "FullMaskBlueMarble");
+            await Until(() => main.State.Mask == MaskType.BlueMarble);
+            Check(FindButton(main, "FullMissing").Classes.Contains("selected") && FindButton(main, "CompactMissing").Classes.Contains("selected"), "Both missing-detection buttons use the blue action style");
             await main.Engine.SetParametersAsync(1, 12, false, true);
             Check(main.Engine.Snapshot.Step == 12 && main.Engine.Snapshot.Extreme, "CPU, step and speed reach the original engine");
             await main.Engine.ExecuteAsync(DesktopCommand.AddWanted, "#ED1C24");

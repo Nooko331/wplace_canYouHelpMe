@@ -110,14 +110,22 @@ public static class PaletteColorMatcher
             }
         }
 
+        if (TryMatchHalfTransparent(sample, out var original)) return (original, 0);
+        return (best, minDiff);
+    }
+
+    public static bool TryMatchHalfTransparent(BgrColor sample, out BgrColor original)
+    {
         foreach (var range in HalfTransparentRanges)
         {
             if (range.Contains(sample))
             {
-                return (range.Original, 0);
+                original = range.Original;
+                return true;
             }
         }
-        return (best, minDiff);
+        original = default;
+        return false;
     }
 
     public static bool TryMatch(BgrColor sample, int tolerance, out BgrColor color)

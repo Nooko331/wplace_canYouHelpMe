@@ -11,7 +11,7 @@ using WplaceColorWatch;
 
 namespace Wplace.Desktop;
 
-public sealed class MainWindow : Window
+public sealed partial class MainWindow : Window
 {
     internal readonly WindowsEngineHost Engine;
     internal DesktopSnapshot State { get; private set; } = new();
@@ -48,7 +48,8 @@ public sealed class MainWindow : Window
         AddHandler(GotFocusEvent, (_, e) => Engine.EditingInput = e.Source is TextBox);
         AddHandler(LostFocusEvent, (_, _) => Engine.EditingInput = false);
         full = BuildFull(); compact = new Viewbox { Child = BuildCompact(), Stretch = Stretch.Uniform, StretchDirection = StretchDirection.DownOnly }; compact.IsVisible = false;
-        var root = new StackPanel(); root.Children.Add(full); root.Children.Add(compact);
+        var root = new Grid(); root.Children.Add(full); root.Children.Add(compact);
+        BuildMaskGuide(root);
         frame = new Border { BorderBrush = Ui.Navy, BorderThickness = new Thickness(1), Background = Brushes.White, Child = root, Margin = new Thickness(0, 0, 2, 2) };
         Content = frame;
         workers.Maximum = Math.Max(1, Environment.ProcessorCount - 1);
@@ -97,6 +98,8 @@ public sealed class MainWindow : Window
                 if (Program.Arguments.Contains("--preview-release-notes")) { await ShowNotesAsync(false); Close(); return; }
                 if (!Program.Preview)
                 {
+                    await maskChosen.Task;
+                    if (closing) return;
                     await ShowNotesAsync(true);
                     _ = CheckUpdatesAsync();
                 }
@@ -114,7 +117,7 @@ public sealed class MainWindow : Window
         var close = Ui.IconButton("close", "关闭", Close, "FullClose"); close.Classes.Add("close");
         var controls = Ui.Row(Ui.Button("精简布局", () => SetCompact(true), "compact", id: "CompactLayout"), minimize, close);
         Grid.SetColumn(controls, 1); header.Children.Add(controls); page.Children.Add(Ui.TitleBar(header, this));
-        page.Children.Add(new Border { BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 1), Background = Ui.Pale, Padding = new Thickness(20, 10), Child = Ui.Row(Ui.Key("A"), Ui.Text(Program.Preview ? "界面预览 · 未启用全局快捷键与填涂" : "将鼠标停在画布上，按 A 取色", 15, true), Ui.Note("BlueMarble / WPlace 官方蒙版")) });
+        page.Children.Add(new Border { BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 1), Background = Ui.Pale, Padding = new Thickness(20, 10), Child = Ui.Row(Ui.Key("A"), Ui.Text(Program.Preview ? "界面预览 · 未启用全局快捷键与填涂" : "将鼠标停在画布上，按 A 取色", 15, true)) });
 
         var columns = new Grid { ColumnDefinitions = new ColumnDefinitions("540,360") };
         var left = new StackPanel { Spacing = 10, Margin = new Thickness(20, 16) };
@@ -130,6 +133,8 @@ public sealed class MainWindow : Window
         left.Children.Add(Ui.Note("拖动框选矩形 · 单击绘制正交多边形 · Esc 取消"));
         var eye = Ui.Button("显示范围与扫描点", ToggleRange, "eye", id: "FullShowRange"); eyes.Add(eye); editable.Add(eye); left.Children.Add(eye);
         left.Children.Add(Ui.Rule());
+        maskSection = BuildMaskSection(false);
+        left.Children.Add(maskSection); left.Children.Add(Ui.Rule());
         var colorHeading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") }; colorHeading.Children.Add(Section("palette", "颜色规则"));
         var manage = Ui.Button("颜色管理", OpenColors, id: "FullColors"); editable.Add(manage); Grid.SetColumn(manage, 1); colorHeading.Children.Add(manage); left.Children.Add(colorHeading);
         left.Children.Add(Ui.Column(Ui.Row(wantedText, wantedPreview), Ui.Row(excludedText, excludedPreview)));
@@ -151,7 +156,7 @@ public sealed class MainWindow : Window
         var progressLabels = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto") }; progressLabels.Children.Add(Ui.Row(Ui.Text("任务进度", 16, true), status));
         fullTime.Margin = new Thickness(16, 0); Grid.SetColumn(fullTime, 1); progressLabels.Children.Add(fullTime); Grid.SetColumn(fullCount, 2); progressLabels.Children.Add(fullCount);
         progress.Children.Add(progressLabels); progress.Children.Add(fullProgress);
-        var fill = Ui.Button("开始自动填涂", () => Command(DesktopCommand.StartFill), "play", true, "FullStart"); var missing = Ui.Button("检测遗漏", () => Command(DesktopCommand.DetectMissing), "missing", id: "FullMissing");
+        var fill = Ui.Button("开始自动填涂", () => Command(DesktopCommand.StartFill), "play", true, "FullStart"); var missing = Ui.Button("检测遗漏", () => Command(DesktopCommand.DetectMissing), "missing", true, "FullMissing");
         editable.Add(fill); editable.Add(missing); progress.Children.Add(Ui.Row(fill, missing, Ui.Key("Esc"), Ui.Note("随时停止"))); page.Children.Add(progress);
         var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,*"), Margin = new Thickness(20, 8, 20, 14) };
         var notes = FooterLink("更新说明", () => Run(() => ShowNotesAsync(false)), "ReleaseNotes"); footer.Children.Add(notes); editable.Add(notes);
@@ -180,7 +185,7 @@ public sealed class MainWindow : Window
         extreme.Add(AddCompactButton(row, "bolt", "极致速度", () => SetSpeed(true), "CompactExtreme", () => "缩短填涂间隔；仍保留取色后首次验证。"));
         Divide(row);
         var play = AddCompactButton(row, "play", "开始自动填涂", () => Command(DesktopCommand.StartFill), "CompactStart", () => "先扫描当前范围，再按颜色填涂。\n运行时按 Esc 停止。"); play.Classes.Add("selected"); play.Width = 44;
-        AddCompactButton(row, "missing", "检测遗漏", () => Command(DesktopCommand.DetectMissing), "CompactMissing", () => "建议完成填涂后使用。发现候选点后会先询问是否补涂。");
+        AddCompactButton(row, "missing", "检测遗漏", () => Command(DesktopCommand.DetectMissing), "CompactMissing", () => "建议完成填涂后使用。发现候选点后会先询问是否补涂。").Classes.Add("selected");
         Divide(row);
         row.Children.Add(Ui.Hint(compactProgress, "任务进度", () => State.Status + " · " + State.Percent + "%"));
         compactTime.FontFamily = "Consolas"; compactTime.HorizontalAlignment = HorizontalAlignment.Center;
@@ -226,6 +231,7 @@ public sealed class MainWindow : Window
         {
             if (!initialStateApplied && snapshot.Ready) { initialStateApplied = true; SetCompact(snapshot.Compact, false); }
             foreach (var c in editable) c.IsEnabled = snapshot.Ready && !snapshot.Busy;
+            UpdateMaskGuide(snapshot);
             foreach (var b in balanced) b.Classes.Set("selected", !snapshot.Extreme);
             foreach (var b in extreme) b.Classes.Set("selected", snapshot.Extreme);
             foreach (var b in eyes) b.Classes.Set("selected", snapshot.ShowRange);
@@ -268,7 +274,7 @@ public sealed class MainWindow : Window
         compact.MaxWidth = Math.Max(500, screen.WorkingArea.Width / screen.Scaling - 12);
         if (fullContent == null) return;
         double chrome = fullContent.Bounds.Height > 0 && full.Bounds.Height > 0 ? full.Bounds.Height - fullContent.Bounds.Height : 330;
-        fullContent.MaxHeight = Math.Max(180, Math.Min(530, screen.WorkingArea.Height / screen.Scaling - chrome - 16));
+        fullContent.MaxHeight = Math.Max(180, Math.Min(640, screen.WorkingArea.Height / screen.Scaling - chrome - 16));
     }
     private void FitToWorkingArea()
     {
@@ -316,7 +322,7 @@ public sealed class MainWindow : Window
         notesWindow = null; UpdateHotkeySuppression();
         if (shown && !Program.Preview) history.MarkViewed(Program.Version);
     }
-    private void UpdateHotkeySuppression() => Engine.HotkeysSuspended = notesWindow != null || guideWindow != null;
+    private void UpdateHotkeySuppression() => Engine.HotkeysSuspended = maskGuide.IsVisible || notesWindow != null || guideWindow != null;
     internal void RegisterChild(Window window)
     {
         children.Add(window); window.Closed += (_, _) => children.Remove(window);
@@ -342,6 +348,7 @@ public sealed class MainWindow : Window
     {
         if (allowClose) return;
         e.Cancel = true; if (closing) return; closing = true;
+        maskChosen.TrySetResult();
         foreach (var child in children.ToArray()) child.Close();
         try { await Engine.ShutdownAsync(); }
         catch (Exception error) { Logger.Error("[desktop-shutdown] " + error); }

@@ -33,6 +33,9 @@ internal static class Program
             Check(await OnEngine(form, () => Get<IntPtr>(form, "_hookId") == IntPtr.Zero), "Integration harness installs no global hook");
             Check(host.Snapshot.Step == 14 && host.Snapshot.Extreme, "Existing settings load through the bridge");
             Check(!host.Snapshot.Compact, "Legacy saved compact layout cannot override full mode at startup");
+            Check(host.Snapshot.Mask == null, "Legacy settings require an explicit mask choice");
+            await host.SetMaskAsync(MaskType.BlueMarble);
+            Check(UserSettings.Load(path).Mask == MaskType.BlueMarble, "Mask choice is saved before exit");
 
             await host.SetParametersAsync(1, 17, false, false);
             await host.SetCompactAsync(true);
@@ -104,6 +107,32 @@ internal static class Program
                 Check(result.Message.Contains("未检测到遗漏"), "Real missing-detection scan runs against the harness canvas and returns through the prompt bridge");
                 Check(await OnEngine(form, () => Get<UserSettings>(form, "_settings").SkipIslandRecommendation), "Recommendation checkbox persists its original setting");
 
+                await host.SetMaskAsync(MaskType.Official);
+                await OnEngine(form, () =>
+                {
+                    // 20 x 10 staggered samples. Only the left half uses a display alias.
+                    canvas.BackColor = Color.FromArgb(237, 28, 36);
+                    var alias = PaletteColorMatcher.GetHalfTransparentColor(BgrColor.FromColor(canvas.BackColor));
+                    canvas.Paint += (_, e) =>
+                    {
+                        using var brush = new SolidBrush(Color.FromArgb(alias.R, alias.G, alias.B));
+                        e.Graphics.FillRectangle(brush, 20, 20, 100, 100);
+                    };
+                    canvas.Refresh(); return true;
+                });
+                resultPrompt = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                host.PromptHandler = prompt => { resultPrompt.TrySetResult(prompt); return Task.FromResult(new EngineAnswer(false)); };
+                await host.ExecuteAsync(DesktopCommand.DetectMissing);
+                result = await resultPrompt.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                await Until(() => !host.Snapshot.Busy);
+                Check(result.Confirm && result.Message.Contains("100 个半透明采样点"), "Official mask finds the entire translucent block and skips opaque pixels in compact mode");
+                await host.ExecuteAsync(DesktopCommand.AddExcluded, "#ED1C24");
+                resultPrompt = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                await host.ExecuteAsync(DesktopCommand.DetectMissing);
+                result = await resultPrompt.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                await Until(() => !host.Snapshot.Busy);
+                Check(!result.Confirm && result.Message.Contains("未检测到遗漏"), "Official missing detection respects excluded colors");
+
                 await OnEngine(form, () =>
                 {
                     form.ExecuteDesktopCommand(DesktopCommand.StartFill, null);
@@ -142,6 +171,7 @@ internal static class Program
             {
                 await restart.Ready.WaitAsync(TimeSpan.FromSeconds(10));
                 Check(!restart.Snapshot.Compact && restart.Snapshot.Step == 10, "Restart opens in full mode while retaining the saved step");
+                Check(restart.Snapshot.Mask == MaskType.Official, "Restart restores the chosen mask without onboarding");
                 Check(restart.Snapshot.Wanted.Count == 0 && restart.Snapshot.Excluded.Count == 0, "Session-only color rules do not become persistent");
             }
             finally { await restart.ShutdownAsync().WaitAsync(TimeSpan.FromSeconds(10)); }

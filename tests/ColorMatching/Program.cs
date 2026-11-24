@@ -49,7 +49,11 @@ internal static class Program
         Require(string.Join(" ", PaletteColorMatcher.Colors.Select(Hex)) == expected,
             "Canonical palette values or ordering changed.");
         Require(PaletteColorMatcher.Colors.Distinct().Count() == 63, "Expected 63 unique originals.");
-        foreach (var color in PaletteColorMatcher.Colors) RequireMatch(color, color);
+        foreach (var color in PaletteColorMatcher.Colors)
+        {
+            RequireMatch(color, color);
+            Require(!PaletteColorMatcher.TryMatchHalfTransparent(color, out _), $"Opaque {Hex(color)} counted as missing.");
+        }
     }
 
     private static void ReportedDisplaySamplesMapToOriginal()
@@ -96,6 +100,8 @@ internal static class Program
                 int[] rgb = components.Select((value, channel) =>
                     (int)(((mask >> channel) & 1) == 0 ? Math.Floor(value) : Math.Ceiling(value))).ToArray();
                 RequireMatch(Rgb(rgb[0], rgb[1], rgb[2]), original);
+                Require(PaletteColorMatcher.TryMatchHalfTransparent(Rgb(rgb[0], rgb[1], rgb[2]), out var match) &&
+                    match == original, $"Official mask failed to resolve {Hex(original)} with rounding variant {mask}.");
             }
         }
     }

@@ -1,33 +1,42 @@
+# 可用性检测
+
+2026-11-24 17:12:21 可用✅
+
 # wplace_canYouHelpMe
 
-WPlace 填涂助手：配合 **BlueMarble 或 WPlace 官方蒙版**显示的参考像素，完成屏幕取色、范围选择、颜色筛选、自动填涂和遗漏检测。
+WPlace 填涂助手可以配合 **Blue Marble 或 WPlace 官方蒙版**使用，支持屏幕取色、范围选择、颜色筛选、自动填涂和遗漏检测。
 
-当前版本 **1.7.2**，采用 Avalonia 像素风界面。发布包面向 **Windows x64**，自包含 .NET 运行时，解压后即可运行。
+当前版本 **1.7.3**，采用 Avalonia 像素风界面。发布包面向 **Windows x64**，自包含 .NET 运行时，解压后即可运行。
 
 [查看已发布版本](https://github.com/Nooko331/wplace_canYouHelpMe/releases) · [反馈问题](https://github.com/Nooko331/wplace_canYouHelpMe/issues) · [开发与验证说明](Desktop/README.md)
 
-## 新版界面
+## v1.7.3 首次启动
 
-- **完整模式**集中展示双颜色、检测范围、颜色规则、CPU 数量、扫描步长、速度和任务进度。
-- **精简模式**将常用操作收成一行，显示百分比和预计剩余时间；鼠标悬停或键盘聚焦可查看功能说明。
-- **颜色管理**提供 63 色色板，支持直接选择、A 键连续取色、想填与排除规则。
-- **功能介绍**提供目录、操作步骤和示例图，入口仅在完整模式。
-- **更新说明**内置于程序，每个版本首次启动显示，也可从完整模式重新打开。
-- **每次启动默认进入完整模式**，不记忆上次布局；CPU、步长和速度等偏好继续保存。
+首次运行或从旧版升级时，完整布局会盖上黑色遮罩，只露出 **蒙版类型**，并提示“请选择当前使用的蒙版类型”。点击与网页画布一致的选项即可保存。以后打开助手会沿用该选择，更换蒙版时可在完整布局中修改。
+
+| 网页上使用的蒙版 | 点击“检测遗漏”时查找的内容 |
+| --- | --- |
+| Blue Marble | 使用孤岛检测，查找可能漏涂的小块区域 |
+| 官方蒙版 | 按扫描步长在划取范围内采样，只查找符合内置 50% 半透明色表的点 |
+
+![v1.7.3 首次启动，黑色遮罩只露出 Blue Marble 和官方蒙版两个选项](README/v1.7.3/00-first-launch.png)
+
+## 界面与操作
 
 ### 完整模式
 
-![1.7.2 完整模式](README/v1.7.2/01-full.png)
+![v1.7.3 完整布局，蒙版类型位于检测范围下方，底部有蓝色检测遗漏按钮](README/v1.7.3/01-full.png)
 
 ### 精简模式
 
-![1.7.2 精简工具栏](README/v1.7.2/02-compact.png)
+![v1.7.3 精简工具栏，蓝色放大镜位于填涂按钮右侧](README/v1.7.3/02-compact.png)
 
 完整模式右上角点击“精简布局”即可切换；精简模式点击展开图标返回。
 
 | 操作或信息 | 完整模式 | 精简模式 |
 | --- | --- | --- |
 | 双颜色、颜色管理、范围选择与显示 | 支持 | 支持 |
+| 蒙版类型 | 可选择或更改 | 沿用完整布局中的选择 |
 | 扫描步长、速度、开始填涂、遗漏检测 | 支持 | 支持 |
 | CPU 数量与自动选择 | 可调整 | 沿用完整模式的设置 |
 | 任务进度 | 已处理／总数、百分比、预计剩余时间 | 固定宽度的百分比和预计剩余时间 |
@@ -36,30 +45,32 @@ WPlace 填涂助手：配合 **BlueMarble 或 WPlace 官方蒙版**显示的参�
 
 <details>
 <summary>查看颜色管理、更新说明与功能介绍</summary>
+
 ### 颜色管理
 
-![1.7.2 颜色管理](README/v1.7.2/03-colors.png)
+![v1.7.3 颜色管理](README/v1.7.3/03-colors.png)
 
 ### 更新说明
 
-![1.7.2 更新说明](README/v1.7.2/05-release-notes.png)
+![v1.7.3 更新说明](README/v1.7.3/05-release-notes.png)
 
 ### 功能介绍
 
-![1.7.2 功能介绍](README/v1.7.2/guide-start.png)
+![v1.7.3 功能介绍中的“遗漏检测与补涂”页面](README/v1.7.3/guide-missing.png)
 
 </details>
 
-以上图片来自 1.7.2 实际程序的界面预览模式，未启用全局快捷键和填涂；功能介绍中的画布图为操作示意。
+以上截图来自 v1.7.3 Windows 程序的只读预览模式。功能介绍中的画布图为操作示意。
 
 ## 快速开始
 
 1. 从 [Releases](https://github.com/Nooko331/wplace_canYouHelpMe/releases) 查看已发布版本，下载对应的 EXE 或 ZIP。ZIP 解压后运行其中的 EXE，无需另装 .NET。
-2. 打开 WPlace 的选色／填涂界面，通过 BlueMarble 或官方蒙版显示参考像素。将工具窗口放到检测范围之外，确保画布无遮挡。
+2. 打开 WPlace 的选色／填涂界面，显示参考像素。在助手的首次启动引导中选择网页正在使用的蒙版，随后将助手窗口移到检测范围之外。
 3. 将鼠标停在参考像素上，按 **A** 取色。主界面的两个色块会显示悬停颜色与移开鼠标后的底色。
 4. 点击 **划取检测范围**，拖动选择矩形；需要不规则范围时，单击开始绘制正交多边形。
 5. 打开 **显示范围与扫描点**，调整扫描步长，让采样点落在目标像素方块内。CPU 数量可点击“自动”；如需限制填涂颜色，先设置颜色管理。
 6. 先使用 **平衡** 速度，点击 **开始自动填涂**。需要停止时按 **Esc**，任务结束后再调整范围或参数。
+7. 填涂结束后，点击蓝色的 **检测遗漏** 按钮。精简布局中对应蓝色放大镜。检查候选点标记，确认后才会补涂。
 
 先用一小块范围确认页面缩放和步长，再扩大范围。程序运行时会控制鼠标与键盘；建议使用英文输入法，并保持画布位置及页面缩放不变。
 
@@ -112,14 +123,9 @@ WPlace 填涂助手：配合 **BlueMarble 或 WPlace 官方蒙版**显示的参�
 
 ### 遗漏检测与补涂
 
-完成正常填涂后，点击完整模式的 **检测遗漏**，或精简模式中对应的放大镜图标。检测只处理已选择的范围，不会在填涂结束后自动运行。
+检测由用户手动启动，只扫描当前划取的矩形或正交多边形，并遵循“想填”和“排除”颜色规则。官方蒙版的半透明显示色会先还原为原色，再按颜色规则筛选。
 
-1. 开始前会显示使用建议，可选择“不再提示”。
-2. 程序寻找小块遗漏候选点，并按颜色规则筛选。
-3. 发现候选点后显示标记，再单独询问是否补涂；确认后才开始补涂。
-4. 未发现候选点时显示检测结果，按配置附带诊断信息。
-
-**“不再提示”只跳过开始前的建议，不会跳过补涂确认。** 遗漏检测用于寻找候选点，仍需结合画布检查结果。
+开始前的使用建议可以勾选“不再提示”。找到候选点后，助手会标出位置并另行询问是否补涂。确认后开始填涂，取消则返回。没有候选点时会显示检测结果。
 
 ### 功能介绍与窗口操作
 
@@ -143,6 +149,7 @@ WPlace 填涂助手：配合 **BlueMarble 或 WPlace 官方蒙版**显示的参�
 | 内容 | 重启后的行为 |
 | --- | --- |
 | CPU 数量、扫描步长、速度、范围显示开关 | 恢复上次设置 |
+| 蒙版类型 | 保留 |
 | 遗漏检测的“不再提示” | 保留 |
 | 完整／精简布局 | 始终进入完整模式，忽略旧版保存的布局 |
 | 已选范围、想填与排除颜色 | 不保留 |
@@ -176,9 +183,9 @@ WPlace 填涂助手：配合 **BlueMarble 或 WPlace 官方蒙版**显示的参�
 程序保留原有 63 色及一组半透明显示色匹配。该组显示色基于 **50% 不透明度叠加在 `#F8F4F0` 底色上**的兼容假设，具体见 [63 色半透明对应表](docs/半透明色板_50percent.md)。更换蒙版透明度或显示方式可能影响识别，不能据此保证任意蒙版设置都能匹配。
 
 <details>
-<summary>高级：遗漏检测参数</summary>
+<summary>高级设置 · Blue Marble 孤岛检测参数</summary>
 
-遗漏检测按交错点阵的六邻接关系聚类，将被非匹配点包围的小簇作为候选，并按条件检查外围是否有同色大簇。以下参数可在启动时通过命令行调整：
+Blue Marble 的孤岛检测按交错点阵的六邻接关系聚类，将被非匹配点包围的小簇作为候选，并按条件检查外围是否有同色大簇。以下参数可在启动时通过命令行调整：
 
 | 参数 | 默认值 | 作用 |
 | --- | --- | --- |
@@ -193,7 +200,7 @@ WPlace 填涂助手：配合 **BlueMarble 或 WPlace 官方蒙版**显示的参�
 例如，在 EXE 所在目录执行：
 
 ```powershell
-.\wplace_canYouHelpMe_Avalonia_v1.7.2.exe --island-color-tol 15 --island-max-size 5
+.\wplace_canYouHelpMe_Avalonia_v1.7.3.exe --island-color-tol 15 --island-max-size 5
 ```
 
 普通扫描的 `--color-tol` 默认为 0；半透明显示色只接受内置计算值及取整，不额外叠加容差。
@@ -220,11 +227,11 @@ dotnet build .\Desktop\Wplace.Desktop.csproj -c Release
 .\Desktop\Publish.ps1
 ```
 
-发布脚本优先使用工作区的 `artifacts/dotnet10/dotnet.exe`，没有时使用 PATH 中的 `dotnet`。1.7.2 的输出为：
+发布脚本优先使用工作区的 `artifacts/dotnet10/dotnet.exe`，没有时使用 PATH 中的 `dotnet`。1.7.3 的输出为：
 
 ```text
-publish/avalonia-v1.7.2/wplace_canYouHelpMe_Avalonia_v1.7.2.exe
-publish/wplace_canYouHelpMe_Avalonia_v1.7.2_win-x64.zip
+publish/avalonia-v1.7.3/wplace_canYouHelpMe_Avalonia_v1.7.3.exe
+publish/wplace_canYouHelpMe_Avalonia_v1.7.3_win-x64.zip
 ```
 
 ZIP 仅包含 EXE，不包含用户设置、日志或更新说明查看记录。脚本拒绝覆盖已有同名 ZIP；本地仅重建 EXE 可使用 `-SkipZip`，分发时应重新核对 ZIP 与 EXE 是否一致。
@@ -232,14 +239,14 @@ ZIP 仅包含 EXE，不包含用户设置、日志或更新说明查看记录。
 ### 维护版本与更新说明
 
 1. 编辑 [Desktop/ReleaseNotes.txt](Desktop/ReleaseNotes.txt)，维护本版用户可见的更新说明。
-2. 同步 [Desktop/Wplace.Desktop.csproj](Desktop/Wplace.Desktop.csproj) 中的 `Version`、`FileVersion`、`AssemblyVersion`，以及 [Desktop/Program.cs](Desktop/Program.cs) 中的 `Version`，再更新 README。
+2. 同步更新桌面项目的 `Version`、`FileVersion`、`AssemblyVersion` 和 Windows 清单中的 `assemblyIdentity.version`，再更新 README。界面从程序集读取版本号。[桌面项目](Desktop/Wplace.Desktop.csproj) · [Windows 清单](Desktop/app.manifest)
 3. 重新打包并预览实际 EXE。说明嵌入程序，修改文本后已生成的 EXE 不会自动变化。
 
 ```powershell
-.\publish\avalonia-v1.7.2\wplace_canYouHelpMe_Avalonia_v1.7.2.exe --preview-release-notes
+.\publish\avalonia-v1.7.3\wplace_canYouHelpMe_Avalonia_v1.7.3.exe --preview-release-notes
 ```
 
-预览模式不写入真实查看记录。同一版本只修改说明不会让已查看的用户再次自动看到弹窗；正式发布新说明时应递增版本。GitHub 更新检测读取已发布的 Release 标签，版本标签使用 `v1.7.2` 这类格式。
+预览模式不写入真实查看记录。同一版本只修改说明不会让已查看的用户再次自动看到弹窗；正式发布新说明时应递增版本。GitHub 更新检测读取已发布的 Release 标签，版本标签使用 `v1.7.3` 这类格式。
 
 ### 验证
 
@@ -248,10 +255,10 @@ ZIP 仅包含 EXE，不包含用户设置、日志或更新说明查看记录。
 dotnet run --project .\tests\Desktop\Desktop.IntegrationTests.csproj -c Release
 
 # 检查实际发布 EXE 的页面和控件交互，输出截图与检查结果
-.\publish\avalonia-v1.7.2\wplace_canYouHelpMe_Avalonia_v1.7.2.exe --capture "$PWD\artifacts\avalonia-review"
+.\publish\avalonia-v1.7.3\wplace_canYouHelpMe_Avalonia_v1.7.3.exe --capture "$PWD\artifacts\avalonia-review"
 ```
 
-1.7.2 打包验证（2026-10-15）：**24/24 项内核桥接检查、30/30 项界面与交互检查通过**，并核对了版本信息和 ZIP 内外 EXE 哈希。桥接检查使用受控画布；界面检查使用只读模式。尚未在实际 WPlace 页面完成本版完整填涂及多显示器现场验收。
+v1.7.3 已通过 **33/33 项界面与交互检查、29/29 项内核桥接检查、10/10 项颜色匹配测试**。在受控画布上，官方蒙版检测找出了全部 100 个半透明采样点，跳过相邻的不透明同色区域，排除该颜色后候选点数为零。已核对 ZIP 中的 EXE 与独立 EXE 的 SHA-256 一致。实际 WPlace 网页上的补涂效果尚待验证。
 
 其他回归测试、架构与历次验证记录见 [Avalonia 桌面版说明](Desktop/README.md)。
 

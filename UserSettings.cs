@@ -4,6 +4,8 @@ using System.Text.Json;
 
 namespace WplaceColorWatch
 {
+    public enum MaskType { BlueMarble = 1, Official = 2 }
+
     /// <summary>
     /// 用户 UI 偏好的持久化设置，独立于 <see cref="Options"/>（后者是 CLI 注入的算法参数）。
     /// 存为 exe 同级目录下的 user_settings.json。任何读写异常都被吞掉，绝不影响启动或关闭流程。
@@ -18,7 +20,21 @@ namespace WplaceColorWatch
         public int ScanStep { get; set; } = 10;
         public bool ShowRange { get; set; }
         public int SpeedPreset { get; set; } = SpeedBalanced;
+        public MaskType? Mask { get; set; }
         public bool SkipIslandRecommendation { get; set; }
+
+        internal void Write(string? filePath)
+        {
+            var path = Path.GetFullPath(filePath ?? GetFilePath());
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllText(temporary, JsonSerializer.Serialize(this, JsonOptions));
+                File.Move(temporary, path, overwrite: true);
+            }
+            finally { File.Delete(temporary); }
+        }
 
         private const string FileName = "user_settings.json";
 
@@ -60,6 +76,7 @@ namespace WplaceColorWatch
                 {
                     settings.SpeedPreset = SpeedBalanced;
                 }
+                if (settings.Mask is not (MaskType.BlueMarble or MaskType.Official)) settings.Mask = null;
                 return settings;
             }
             catch (Exception ex)
@@ -76,10 +93,7 @@ namespace WplaceColorWatch
         {
             try
             {
-                var path = filePath ?? GetFilePath();
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                var json = JsonSerializer.Serialize(this, JsonOptions);
-                File.WriteAllText(path, json);
+                Write(filePath);
             }
             catch (Exception ex)
             {

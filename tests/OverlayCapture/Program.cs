@@ -194,7 +194,7 @@ internal static class Program
         // Preview includes the outline; bitmap scans exclude Right and Bottom.
         int expectedCount = ScanPattern.GetGridPoints(f.Range, 10).Count(f.Range.Contains);
         var all = RunWorker(() => (Dictionary<BgrColor, List<Point>>)Call(f.Main,
-            "ScanMatchingPointsForAllColors", f.Range, new List<BgrColor> { f.Expected }, CancellationToken.None, null)!);
+            "ScanMatchingPointsForAllColors", f.Range, new List<BgrColor> { f.Expected }, CancellationToken.None, null, false)!);
         Require(all.Count == 1 && all[f.Expected].Count == expectedCount,
             $"Full-auto matched {all.Values.Sum(points => points.Count)}/{expectedCount} points in {all.Count} groups.");
         var labeled = RunWorker(() => (Dictionary<long, BgrColor?>)Call(f.Main,

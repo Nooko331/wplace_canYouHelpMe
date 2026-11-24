@@ -1647,7 +1647,7 @@ public partial class Form1 : Form
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         // 更新说明显示期间放行按键，避免 A 触发取色，并让 Esc 正常关闭弹窗。
-        if (_releaseNotesDialog != null || _desktopHost?.PromptOpen == true || (_desktopHost?.HotkeysSuspended == true && !IsColorRulePicking))
+        if ((_desktopHost != null && _settings.Mask == null) || _releaseNotesDialog != null || _desktopHost?.PromptOpen == true || (_desktopHost?.HotkeysSuspended == true && !IsColorRulePicking))
         {
             return NativeMethods.CallNextHookEx(_hookId, nCode, wParam, lParam);
         }
@@ -2189,28 +2189,11 @@ public partial class Form1 : Form
         return result;
     }
 
-    /// <summary>
-    /// 遗漏点检测主流程：扫描建图 → 孤岛判定 → 标注为待处理点 → 弹窗确认 → 复用全自动填涂补涂。
-    /// 在后台 Task 中运行，所有 UI 操作通过 BeginInvoke 切回 UI 线程。
-    /// </summary>
-    private void RunIslandDetection(Rectangle rect, List<BgrColor> allowedColors, CancellationToken token, List<Point>? polygon = null)
+    private Dictionary<BgrColor, List<Point>> FindIslandGroups(Rectangle rect, List<BgrColor> allowedColors,
+        CancellationToken token, List<Point>? polygon, out int islandCount, out string diagnostics)
     {
-        Logger.Debug("[island] RunIslandDetection start");
-        var targets = GetPredefinedColors();
-        if (targets.Count == 0)
-        {
-            BeginInvoke((Action)(() => IslandConfirmDialog.Show(this, "未找到颜色定义", "错误", false)));
-            return;
-        }
-
-        // 1) 扫描建图
         var labeled = ScanLabeledGrid(rect, token, polygon);
-        if (token.IsCancellationRequested)
-        {
-            return;
-        }
-
-        // 2) 孤岛判定：小簇 + 护城河 + 外围同色大簇
+        token.ThrowIfCancellationRequested();
         var detectedIslands = IslandDetector.Detect(
             labeled,
             rect,
@@ -2223,44 +2206,29 @@ public partial class Form1 : Form
             _options.IslandStrongMoatRatio);
         var allowedSet = new HashSet<BgrColor>(allowedColors);
         var islands = detectedIslands.Where(island => allowedSet.Contains(island.Color)).ToList();
-        int totalMissed = islands.Sum(i => i.Points.Count);
-        Logger.Debug($"[island] detected={detectedIslands.Count} allowed={islands.Count} totalMissed={totalMissed}");
+        islandCount = islands.Count;
+        diagnostics = _options.IslandDiagnose ? IslandDetector.Diagnose(labeled, _options.IslandMaxSize) : "";
+        if (diagnostics.Length > 0) Logger.Debug("[diag] " + diagnostics);
+        return islands.GroupBy(island => island.Color)
+            .ToDictionary(group => group.Key, group => group.SelectMany(island => island.Points).ToList());
+    }
 
-        // 诊断：无论是否找到遗漏点，都输出网格分布，用于定位“测不出”根因
-        if (_options.IslandDiagnose)
+    private void RunMissingDetection(Rectangle rect, List<BgrColor> allowedColors, MaskType mask, CancellationToken token, List<Point>? polygon)
+    {
+        int islandCount = 0;
+        string diagnostics = "";
+        var groups = mask == MaskType.Official
+            ? ScanMatchingPointsForAllColors(rect, allowedColors, token, polygon, halfTransparentOnly: true)
+            : FindIslandGroups(rect, allowedColors, token, polygon, out islandCount, out diagnostics);
+        token.ThrowIfCancellationRequested();
+        int totalMissed = groups.Values.Sum(points => points.Count);
+        if (totalMissed == 0)
         {
-            var diag = IslandDetector.Diagnose(labeled, _options.IslandMaxSize);
-            foreach (var line in diag.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-            {
-                Logger.Debug($"[diag] {line}");
-            }
-
-            if (islands.Count == 0 || totalMissed == 0)
-            {
-                Logger.Debug("[island] no missed points found");
-                var msg = "当前颜色规则下未检测到遗漏点。\n\n诊断信息：\n" + diag;
-                BeginInvoke((Action)(() => IslandConfirmDialog.Show(this, msg, "遗漏检测", false)));
-                return;
-            }
-        }
-        else if (islands.Count == 0 || totalMissed == 0)
-        {
-            Logger.Debug("[island] no missed points found");
-            BeginInvoke((Action)(() => IslandConfirmDialog.Show(this, "当前颜色规则下未检测到遗漏点", "遗漏检测", false)));
+            var message = "当前颜色规则下未检测到遗漏点。" + (diagnostics.Length == 0 ? "" : "\n\n诊断信息：\n" + diagnostics);
+            BeginInvoke((Action)(() => IslandConfirmDialog.Show(this, message, "遗漏检测", false)));
             return;
         }
-
-        // 3) 按颜色分组 + 聚类排序，供覆盖层显示与补涂复用
-        var groups = new Dictionary<BgrColor, List<Point>>();
-        foreach (var isl in islands)
-        {
-            if (!groups.TryGetValue(isl.Color, out var list))
-            {
-                list = new List<Point>();
-                groups[isl.Color] = list;
-            }
-            list.AddRange(isl.Points);
-        }
+        var summary = mask == MaskType.Official ? $"检测到 {totalMissed} 个半透明采样点。" : $"检测到 {islandCount} 处孤岛（{totalMissed} 个像素点）。";
         var orderedMissed = new List<Point>();
         foreach (var kv in groups)
         {
@@ -2272,21 +2240,17 @@ public partial class Form1 : Form
         BeginInvoke((Action)(() => SetOverlayFillPoints(orderedMissed, true)));
 
         // 5) 弹窗确认（必须在 UI 线程；IslandConfirmDialog.ShowDialog 会阻塞至用户选择）
-        bool confirm = false;
-        using var done = new ManualResetEventSlim(false);
+        var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         BeginInvoke((Action)(() =>
         {
-            var r = IslandConfirmDialog.Show(this,
-                $"检测到 {islands.Count} 处孤岛（{totalMissed} 个像素点）。\n请确认这些点是否需要补涂，确认后将自动补涂。",
+            if (token.IsCancellationRequested) return;
+            var result = IslandConfirmDialog.Show(this,
+                summary + "\n请确认这些点是否需要补涂，确认后将自动补涂。",
                 "遗漏检测", true);
-            confirm = r == DialogResult.Yes;
-            done.Set();
+            answer.TrySetResult(result == DialogResult.Yes);
         }));
-        done.Wait(token);
-        if (token.IsCancellationRequested)
-        {
-            return;
-        }
+        bool confirm = answer.Task.WaitAsync(token).GetAwaiter().GetResult();
+        token.ThrowIfCancellationRequested();
 
         if (!confirm)
         {
@@ -2310,7 +2274,8 @@ public partial class Form1 : Form
     /// </summary>
     private void BeginIslandDetection()
     {
-        Logger.Debug("[ui] BeginIslandDetection");
+        var mask = _settings.Mask ?? MaskType.BlueMarble;
+        Logger.Debug($"[ui] BeginMissingDetection mask={mask}");
         if (!btnRunIslandDetect.Enabled)
         {
             Logger.Debug("[island] button disabled, skipping");
@@ -2382,7 +2347,7 @@ public partial class Form1 : Form
         {
             try
             {
-                RunIslandDetection(snapshot.recordedRange.Value, allowedColors, token, _state.GetPolygon());
+                RunMissingDetection(snapshot.recordedRange.Value, allowedColors, mask, token, _state.GetPolygon());
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -2421,7 +2386,8 @@ public partial class Form1 : Form
         Rectangle rect,
         List<BgrColor> allowedTargets,
         CancellationToken token,
-        List<Point>? polygon = null)
+        List<Point>? polygon = null,
+        bool halfTransparentOnly = false)
     {
         var poly = polygon != null && polygon.Count >= 3 ? new OrthogonalPolygon(polygon) : null;
         Logger.Debug($"[scan_all] ScanMatchingPointsForAllColors rect={rect} palette={PaletteColorMatcher.Colors.Count} allowed={allowedTargets.Count} displayProfile=half-on-F8F4F0 tol={_options.ColorTol}");
@@ -2475,8 +2441,10 @@ public partial class Form1 : Form
                 byte r = buffer[offset + 2];
                 var pixelColor = new BgrColor(b, g, r);
 
-                if (PaletteColorMatcher.TryMatch(pixelColor, _options.ColorTol, out var matchedColor) &&
-                    allowedSet.Contains(matchedColor))
+                var matched = halfTransparentOnly
+                    ? PaletteColorMatcher.TryMatchHalfTransparent(pixelColor, out var matchedColor)
+                    : PaletteColorMatcher.TryMatch(pixelColor, _options.ColorTol, out matchedColor);
+                if (matched && allowedSet.Contains(matchedColor))
                 {
                     groups[matchedColor].Add(new Point(rect.Left + x, rect.Top + y));
                 }

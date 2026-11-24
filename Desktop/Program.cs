@@ -8,7 +8,7 @@ internal static class Program
 {
     internal static string[] Arguments { get; private set; } = [];
     internal static bool Preview => Arguments.Contains("--preview-ui") || Arguments.Contains("--capture") || Arguments.Contains("--smoke-test") || Arguments.Contains("--preview-release-notes");
-    internal static string Version => "1.7.2";
+    internal static string Version => typeof(Program).Assembly.GetName().Version!.ToString(3);
     internal static WplaceColorWatch.Options Options { get; private set; } = new();
     internal static Action? ActivateRequested;
     private const string PipeName = "wplace-avalonia-activate";
