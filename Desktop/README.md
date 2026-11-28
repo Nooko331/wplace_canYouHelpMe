@@ -1,16 +1,16 @@
 # Avalonia 桌面版
 
-这是接入原有填涂功能的正式界面工程，版本为 **1.7.4**。可配合 Blue Marble 或 WPlace 官方蒙版使用。早期外观样板继续保留在 `prototypes/AvaloniaToolbar`。
+这是接入原有填涂功能的正式界面工程，版本为 **1.7.5**。可配合 Blue Marble 或 WPlace 官方蒙版使用。早期外观样板继续保留在 `prototypes/AvaloniaToolbar`。
 
 ## 启动与打包
 
 已打包的 Windows x64 版本位于：
 
 ```text
-publish/avalonia-v1.7.4/wplace_canYouHelpMe_Avalonia_v1.7.4.exe
+publish/avalonia-v1.7.5/wplace_canYouHelpMe_Avalonia_v1.7.5.exe
 ```
 
-这是自包含程序，使用者无需安装 .NET。正常双击会启用原有取色、范围选择、扫描和填涂功能。每次启动默认进入完整模式；本版首次启动会显示更新说明。若尚未保存蒙版类型，先完成蒙版选择。
+这是自包含程序，使用者无需安装 .NET。正常双击会启用原有取色、范围选择、扫描和填涂功能。每次启动默认进入完整模式；本版首次启动会显示更新说明。在完整布局中拖动滑杆或直接输入与网页一致的蒙版不透明度。
 
 开发需要 .NET 10 SDK；当前工作区也提供了忽略提交的 `artifacts/dotnet10/dotnet.exe`：
 
@@ -23,7 +23,7 @@ publish/avalonia-v1.7.4/wplace_canYouHelpMe_Avalonia_v1.7.4.exe
 
 ## 界面
 
-- **完整模式**：双颜色及原始 RGB、范围、点阵显示、颜色规则、CPU 数量与自动选择、步长、速度、任务计数、百分比和预计剩余时间。
+- **完整模式**：双颜色及原始 RGB、范围、点阵显示、蒙版不透明度、颜色规则、CPU 数量与自动选择、步长、速度、任务计数、百分比和预计剩余时间。
 - **精简模式**：一行常用图标、两种颜色、步长、固定宽度的百分比和时间。鼠标悬停或 Tab 聚焦显示说明。没有 CPU、停止、更新说明、GitHub 或功能介绍按钮；运行时仍用 Esc 停止。
 - **颜色管理**：沿用 63 色以及想填/排除规则；支持 A 键连续采样，也可直接点击色板。相同颜色只能属于一组。清空想填后默认全部颜色，再减去排除。
 - **更新说明**按版本离线收录。当前版本默认展开，历史条目可以单独展开、收起。每版首次启动显示一次，也可从完整布局手动打开。正文滚动时，底部“知道了”按钮保持可见。
@@ -37,13 +37,13 @@ publish/avalonia-v1.7.4/wplace_canYouHelpMe_Avalonia_v1.7.4.exe
 
 屏幕取色、全局键盘钩子、矩形/正交多边形选择及透明范围覆盖层继续使用现有 Windows 实现。选择覆盖层增加了像素风操作提示，但坐标算法不变。因此这一版仍然是 **Windows 应用**，没有宣称跨平台填涂支持。
 
-扫描匹配、半透明颜色归组、颜色筛选、白色优先与白色免检、非白色每次取色后的首次涂色验证、补涂均沿用原流程。Blue Marble 使用孤岛检测，官方蒙版只匹配范围内的半透明采样点。界面关闭时先取消并等待任务退出，再释放钩子、覆盖层和消息线程。
+扫描匹配、半透明颜色归组、颜色筛选、白色优先与白色免检、非白色每次取色后的首次涂色验证、补涂均沿用原流程。蒙版不透明度为 100% 时按原色检测孤岛，1% 至 99% 时匹配对应的蒙版显示色，0% 时没有可识别的蒙版采样点。界面关闭时先取消并等待任务退出，再释放钩子、覆盖层和消息线程。
 
 编辑数值时 A 不会抢走输入；功能介绍、更新说明和确认窗口期间暂停全局取色。连续选色支持保持本程序在前台、仅把鼠标移到画布后按 A。
 
 ## 设置兼容
 
-- 继续读写 EXE 同目录的 `user_settings.json`，保留 CPU、步长、速度等原有偏好。缺少有效的 `Mask` 值时显示首次选择引导。用户选定后立即保存，完整布局和精简布局共享该值。
+- 继续读写 EXE 同目录的 `user_settings.json`，保留 CPU、步长、速度等原有偏好。两种布局共享整数百分比 `MaskOpacity`，调整后立即保存。旧设置中的 Blue Marble 转为 100%，官方蒙版转为 50%。首次使用默认为 100%。
 - 完整／精简布局仅在本次运行中切换，不写入设置；忽略旧设置中的 `CompactLayout`，每次启动均进入完整模式。
 - 颜色规则和范围仍仅对本次运行有效，不写入设置。
 - 更新说明仍共用 `%LOCALAPPDATA%\wplace_canYouHelpMe\release_notes_state.json`，以版本区分。
@@ -55,9 +55,9 @@ publish/avalonia-v1.7.4/wplace_canYouHelpMe_Avalonia_v1.7.4.exe
 只检查界面、不启用桌面读取、快捷键或填涂：
 
 ```powershell
-& '.\publish\avalonia-v1.7.4\wplace_canYouHelpMe_Avalonia_v1.7.4.exe' --preview-ui
-& '.\publish\avalonia-v1.7.4\wplace_canYouHelpMe_Avalonia_v1.7.4.exe' --preview-release-notes
-& '.\publish\avalonia-v1.7.4\wplace_canYouHelpMe_Avalonia_v1.7.4.exe' --capture "$PWD\artifacts\avalonia-review"
+& '.\publish\avalonia-v1.7.5\wplace_canYouHelpMe_Avalonia_v1.7.5.exe' --preview-ui
+& '.\publish\avalonia-v1.7.5\wplace_canYouHelpMe_Avalonia_v1.7.5.exe' --preview-release-notes
+& '.\publish\avalonia-v1.7.5\wplace_canYouHelpMe_Avalonia_v1.7.5.exe' --capture "$PWD\artifacts\avalonia-review"
 ```
 
 `--capture`/`--smoke-test` 使用真实 Avalonia 控件渲染所有页面，并输出 `checks.json`、`layout.json` 和 PNG；失败写 `failure.txt` 并返回非零退出码。精简进度示例使用模拟数值，应用正常启动时只显示内核实际进度。
@@ -115,3 +115,9 @@ dotnet run --project tests\ReleaseNotes\ReleaseNotes.RegressionTests.csproj -c R
 Windows x64 发布包通过 37/37 项只读界面检查，覆盖历史版本排序、当前版本默认展开以及旧版说明独立展开和收起。模拟同版本时，页脚保留 GitHub 按钮。模拟更高版本时，检查确认了按钮上的版本号、辅助功能名称，以及橙色背景在不同时间点的颜色变化。[更新提示截图](../README/v1.7.4/update-available.png)
 
 更新检查回归测试通过 9/9 项，覆盖发布页重定向、API 回退和离线错误处理。发布文件版本为 `1.7.4.0`，ZIP 内外的 EXE 哈希一致。界面检查记录位于 `artifacts/avalonia-v174-notes/review/checks.json`。
+
+### 1.7.5 验证记录
+
+正式 EXE 通过 37 项界面检查，覆盖滑杆与百分比输入联动、越界值处理，以及新版说明默认展开。桌面集成测试通过 31 项，包含旧设置迁移、重启恢复和自建画布上的 25% 蒙版采样。颜色匹配测试 11 项、更新检查测试 9 项全部通过。
+
+Windows x64 文件版本为 `1.7.5.0`，ZIP 仅含正式 EXE，包内外 SHA-256 均为 `41aa275c9c81489006f070c95d75e8c61b0088f096487f4fd389ff4d4389e8e6`。界面检查记录位于 `artifacts/avalonia-v175-final/checks.json`。[更新说明截图](../README/v1.7.5/05-release-notes.png)

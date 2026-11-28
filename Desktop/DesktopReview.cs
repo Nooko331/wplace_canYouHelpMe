@@ -28,14 +28,23 @@ internal static class DesktopReview
             Check(!main.CompactMode && main.GuideEntryVisible, "Application opens in full mode with the feature guide entry visible");
             Check(WindowsEngineHost.Palette.Count == 63, "63 canonical colors available");
             await Task.Delay(150);
-            Check(main.State.Mask == null && main.Engine.HotkeysSuspended && !FindButton(main, "FullStart").IsEffectivelyEnabled,
-                "First launch blocks background controls and shortcuts until a mask is selected");
+            var slider = main.GetVisualDescendants().OfType<Slider>().Single(c => c.Name == "MaskOpacitySlider");
+            var input = main.GetVisualDescendants().OfType<TextBox>().Single(c => c.Name == "MaskOpacityInput");
+            var field = main.GetVisualDescendants().OfType<NumberField>().Single(c => c.Name == "MaskOpacity");
+            Check(slider.Minimum == 0 && slider.Maximum == 100 && slider.Value == 100 && input.Text == "100%",
+                "First launch shows a 0–100% opacity control defaulting to fully opaque");
             Capture(main, directory, "00-first-launch");
-            Click(main, "GuideMaskOfficial");
-            await Until(() => main.State.Mask == MaskType.Official && !main.Engine.HotkeysSuspended);
-            Check(FindButton(main, "FullMaskOfficial") is RadioButton { IsChecked: true }, "Selecting the official mask dismisses the spotlight and selects the full-layout radio");
-            Click(main, "FullMaskBlueMarble");
-            await Until(() => main.State.Mask == MaskType.BlueMarble);
+            slider.Value = 37;
+            await Until(() => main.State.MaskOpacity == 37 && input.Text == "37%");
+            foreach (var (entry, value) in new[] { ("0", 0), ("73%", 73), ("100％", 100) })
+            {
+                input.Text = entry;
+                input.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+                await Until(() => main.State.MaskOpacity == value && slider.Value == value && input.Text == value + "%");
+            }
+            input.Text = "101%";
+            Check(!field.Commit() && input.Text == "100%" && slider.Value == 100,
+                "Percentage input and slider share one value and reject out-of-range input");
             Check(FindButton(main, "FullMissing").Classes.Contains("selected") && FindButton(main, "CompactMissing").Classes.Contains("selected"), "Both missing-detection buttons use the blue action style");
             await main.Engine.SetParametersAsync(1, 12, false, true);
             Check(main.Engine.Snapshot.Step == 12 && main.Engine.Snapshot.Extreme, "CPU, step and speed reach the original engine");

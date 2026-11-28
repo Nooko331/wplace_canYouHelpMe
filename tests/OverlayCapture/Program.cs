@@ -234,10 +234,10 @@ internal static class Program
     private static void UnpaintedAliasIsNotPaint(Fixture f)
     {
         var target = new BgrColor(24, 0, 96);
-        var alias = PaletteColorMatcher.GetHalfTransparentColor(target);
+        var alias = new PaletteColorMatcher(50).GetDisplayColor(target);
         f.SetColor(alias.ToColor());
         Cursor.Position = new Point(f.SamplePoint.X + 10, f.SamplePoint.Y);
-        Require(PaletteColorMatcher.TryMatch(f.Expected, 0, out var matched) && matched == target,
+        Require(new PaletteColorMatcher(50).TryMatch(f.Expected, 0, out var matched) && matched == target,
             "The test sample must remain a valid reference-image alias.");
         var watch = Stopwatch.StartNew();
         Require(!RunWorker(() => VerifyPaint(f, target)), "An unpainted reference alias was accepted as successful paint.");
@@ -323,7 +323,7 @@ internal static class Program
         var picked = new HashSet<BgrColor> { target, old };
         Require(!(bool)Call(f.Main, "IsColorAlreadyPicked", target, picked, target)!,
             "The current target was rejected during repicking.");
-        Require(!(bool)Call(f.Main, "IsColorAlreadyPicked", PaletteColorMatcher.GetHalfTransparentColor(target), picked, target)!,
+        Require(!(bool)Call(f.Main, "IsColorAlreadyPicked", new PaletteColorMatcher(50).GetDisplayColor(target), picked, target)!,
             "The current target's display alias was rejected during repicking.");
         Require((bool)Call(f.Main, "IsColorAlreadyPicked", old, picked, target)!, "An old different color was no longer rejected.");
     }

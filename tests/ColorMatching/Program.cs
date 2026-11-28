@@ -2,8 +2,10 @@ using WplaceColorWatch;
 
 internal static class Program
 {
+    private static readonly PaletteColorMatcher Half = new(50);
     private static readonly (string Name, Action Run)[] Cases =
     {
+        ("VariableOpacity", VariableOpacity),
         ("OriginalPaletteRetainsAll63Colors", OriginalPaletteRetainsAll63Colors),
         ("ReportedDisplaySamplesMapToOriginal", ReportedDisplaySamplesMapToOriginal),
         ("EveryHalfTransparentColorMapsBackToOriginal", EveryHalfTransparentColorMapsBackToOriginal),
@@ -42,6 +44,32 @@ internal static class Program
         return failures == 0 ? 0 : 1;
     }
 
+    private static void VariableOpacity()
+    {
+        var paint = Rgb(96, 0, 24);
+        var quarter = Rgb(210, 183, 186);
+        var background = Rgb(248, 244, 240);
+        foreach (int value in Enumerable.Range(0, 101))
+        {
+            var matcher = new PaletteColorMatcher(value);
+            var expected = Rgb((96 * value + 248 * (100 - value) + 50) / 100,
+                (244 * (100 - value) + 50) / 100, (24 * value + 240 * (100 - value) + 50) / 100);
+            Require(matcher.GetDisplayColor(paint) == expected, $"Wrong blend at {value}%.");
+            Require(matcher.TryMatch(paint, 0, out var raw) && raw == paint, "Opaque paint must remain identifiable.");
+            Require(!matcher.TryMatchOverlay(paint, out _) && !matcher.TryMatch(background, 30, out _),
+                "A painted pixel or the canvas background was counted as a mask.");
+        }
+        var at25 = new PaletteColorMatcher(25);
+        Require(at25.TryMatchOverlay(quarter, out var original) && original == paint, "25% alias missing.");
+        Require(!at25.TryMatch(Half.GetDisplayColor(paint), 0, out _), "A stale 50% alias matched at 25%.");
+        foreach (int endpoint in new[] { 0, 100 })
+            Require(!new PaletteColorMatcher(endpoint).TryMatch(quarter, 0, out _), "Endpoint retained a translucent alias.");
+        var faint = new PaletteColorMatcher(1);
+        var collision = PaletteColorMatcher.Colors.GroupBy(faint.GetDisplayColor)
+            .First(group => group.Count() > 1 && group.Key != background).Key;
+        Require(!faint.TryMatch(collision, 25, out _), "Ambiguous low-opacity sample was assigned a paint.");
+    }
+
     private static void OriginalPaletteRetainsAll63Colors()
     {
         // Snapshot of the original Form1 palette before extracting the matcher.
@@ -52,7 +80,7 @@ internal static class Program
         foreach (var color in PaletteColorMatcher.Colors)
         {
             RequireMatch(color, color);
-            Require(!PaletteColorMatcher.TryMatchHalfTransparent(color, out _), $"Opaque {Hex(color)} counted as missing.");
+            Require(!Half.TryMatchOverlay(color, out _), $"Opaque {Hex(color)} counted as missing.");
         }
     }
 
@@ -60,7 +88,7 @@ internal static class Program
     {
         var original = Rgb(96, 0, 24);
         var displayed = Rgb(172, 122, 132);
-        Require(PaletteColorMatcher.GetHalfTransparentColor(original) == displayed,
+        Require(Half.GetDisplayColor(original) == displayed,
             "The user's #600018 -> #AC7A84 calibration must be reproduced.");
         RequireMatch(displayed, original);
         RequireMatch(original, original);
@@ -82,7 +110,7 @@ internal static class Program
                 (int)Math.Round((original.G + 244) * 0.5, MidpointRounding.AwayFromZero),
                 (int)Math.Round((original.B + 240) * 0.5, MidpointRounding.AwayFromZero));
             Require(seen.Add(displayed), $"Display alias collision at {Hex(displayed)}.");
-            Require(PaletteColorMatcher.GetHalfTransparentColor(original) == displayed,
+            Require(Half.GetDisplayColor(original) == displayed,
                 $"Incorrect displayed color for {Hex(original)}.");
             RequireMatch(displayed, original);
         }
@@ -100,7 +128,7 @@ internal static class Program
                 int[] rgb = components.Select((value, channel) =>
                     (int)(((mask >> channel) & 1) == 0 ? Math.Floor(value) : Math.Ceiling(value))).ToArray();
                 RequireMatch(Rgb(rgb[0], rgb[1], rgb[2]), original);
-                Require(PaletteColorMatcher.TryMatchHalfTransparent(Rgb(rgb[0], rgb[1], rgb[2]), out var match) &&
+                Require(Half.TryMatchOverlay(Rgb(rgb[0], rgb[1], rgb[2]), out var match) &&
                     match == original, $"Official mask failed to resolve {Hex(original)} with rounding variant {mask}.");
             }
         }
@@ -110,13 +138,13 @@ internal static class Program
     {
         var gray = Rgb(120, 120, 120);
         var shiftedGray = Rgb(121, 120, 120);
-        Require(!PaletteColorMatcher.TryMatch(shiftedGray, 0, out _),
+        Require(!Half.TryMatch(shiftedGray, 0, out _),
             "Opaque near matches must remain rejected at tolerance 0.");
         RequireMatch(shiftedGray, gray, 1);
         var shiftedDeepRed = Rgb(172, 122, 133);
-        Require(!PaletteColorMatcher.TryMatch(shiftedDeepRed, 0, out _),
+        Require(!Half.TryMatch(shiftedDeepRed, 0, out _),
             "A whole-unit display shift is not a half-unit rounding alternative.");
-        Require(!PaletteColorMatcher.TryMatch(shiftedDeepRed, 1, out _),
+        Require(!Half.TryMatch(shiftedDeepRed, 1, out _),
             "Opaque tolerance must not expand the calculated display aliases.");
     }
 
@@ -125,16 +153,16 @@ internal static class Program
         foreach (var sample in new[] { Rgb(185, 155, 161), Rgb(248, 244, 240),
                                        Rgb(180, 0, 0), Rgb(255, 0, 255) })
         {
-            Require(!PaletteColorMatcher.TryMatch(sample, 0, out _),
+            Require(!Half.TryMatch(sample, 0, out _),
                 $"Unrelated/hover sample {Hex(sample)} was classified as an exact palette color.");
         }
     }
 
     private static void BackgroundRemainsUnmatchedAtIslandTolerance()
     {
-        Require(!PaletteColorMatcher.TryMatch(Rgb(248, 244, 240), 10, out _),
+        Require(!Half.TryMatch(Rgb(248, 244, 240), 10, out _),
             "The assumed canvas background must not become a white island label at default island tolerance.");
-        Require(!PaletteColorMatcher.TryMatch(Rgb(248, 244, 240), 12, out _),
+        Require(!Half.TryMatch(Rgb(248, 244, 240), 12, out _),
             "The assumed background must also remain outside the color-manager sampling tolerance.");
     }
 
@@ -147,13 +175,13 @@ internal static class Program
         {
             // Even a large caller tolerance must not reclassify an excluded exact alias
             // into the nearest allowed tan color.
-            Require(PaletteColorMatcher.TryMatch(sample, 122, out var canonical) && canonical == deepRed,
+            Require(Half.TryMatch(sample, 122, out var canonical) && canonical == deepRed,
                 "Classification must precede allowed-color filtering.");
             Require(!rules.GetEffectiveColors().Contains(canonical), "Excluded display alias leaked through.");
         }
 
         rules.AddWanted(Rgb(156, 132, 107)); // Old raw nearest match for #AC7A84.
-        Require(PaletteColorMatcher.TryMatch(Rgb(172, 122, 132), 25, out var actual) && actual == deepRed,
+        Require(Half.TryMatch(Rgb(172, 122, 132), 25, out var actual) && actual == deepRed,
             "An allowed tan must not steal the deep-red display alias.");
         Require(!rules.GetEffectiveColors().Contains(actual), "Wanted-only filtering accepted an excluded alias.");
     }
@@ -161,7 +189,7 @@ internal static class Program
     private static void WantedListRemainsCanonical()
     {
         var rules = new ColorRuleSet(PaletteColorMatcher.Colors);
-        Require(PaletteColorMatcher.TryMatch(Rgb(172, 122, 132), 0, out var deepRed), "Sample did not match.");
+        Require(Half.TryMatch(Rgb(172, 122, 132), 0, out var deepRed), "Sample did not match.");
         rules.AddWanted(deepRed);
         Require(rules.GetWanted().SequenceEqual(new[] { Rgb(96, 0, 24) }),
             "Color management must store/display the original color, not a second palette entry.");
@@ -180,9 +208,9 @@ internal static class Program
         var picked = new HashSet<BgrColor>(originals);
         foreach (var original in originals)
         {
-            foreach (var sample in new[] { original, PaletteColorMatcher.GetHalfTransparentColor(original) })
+            foreach (var sample in new[] { original, Half.GetDisplayColor(original) })
             {
-                Require(PaletteColorMatcher.TryMatch(sample, 0, out var canonical), "Mixed sample did not match.");
+                Require(Half.TryMatch(sample, 0, out var canonical), "Mixed sample did not match.");
                 groups[canonical] = groups.GetValueOrDefault(canonical) + 1;
                 Require(picked.Contains(canonical), "A rendered sample escaped canonical picked-color detection.");
             }
@@ -195,7 +223,7 @@ internal static class Program
 
     private static void RequireMatch(BgrColor sample, BgrColor expected, int tolerance = 0)
     {
-        Require(PaletteColorMatcher.TryMatch(sample, tolerance, out var actual) && actual == expected,
+        Require(Half.TryMatch(sample, tolerance, out var actual) && actual == expected,
             $"{Hex(sample)} should resolve to {Hex(expected)} at tolerance {tolerance}, got {Hex(actual)}.");
     }
 

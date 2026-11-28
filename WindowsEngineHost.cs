@@ -31,7 +31,7 @@ namespace WplaceColorWatch
         public int Step { get; init; } = 10;
         public bool ShowRange { get; init; }
         public bool Extreme { get; init; }
-        public MaskType? Mask { get; init; }
+        public int MaskOpacity { get; init; } = 100;
         public bool Compact { get; init; }
         public string? HoverColor { get; init; }
         public string? ClearColor { get; init; }
@@ -131,7 +131,7 @@ namespace WplaceColorWatch
 
         public Task ExecuteAsync(DesktopCommand command, string? color = null) => DispatchAsync(form => form.ExecuteDesktopCommand(command, color));
         public Task SetParametersAsync(int workers, int step, bool showRange, bool extreme) => DispatchAsync(form => form.SetDesktopParameters(workers, step, showRange, extreme));
-        public Task SetMaskAsync(MaskType mask) => DispatchAsync(form => form.SetDesktopMask(mask));
+        public Task SetMaskOpacityAsync(int opacity) => DispatchAsync(form => form.SetDesktopMaskOpacity(opacity));
         public Task SetCompactAsync(bool compact) => DispatchAsync(form => form.SetDesktopCompact(compact));
 
         internal void Publish(DesktopSnapshot snapshot)

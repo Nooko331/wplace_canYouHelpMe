@@ -53,7 +53,7 @@ namespace WplaceColorWatch
                 ColorsOpen = IsColorManagerVisible, Picking = IsColorRulePicking ? _colorPickTarget.ToString() : "",
                 PickMessage = _pickCount.Text, Status = status,
                 Workers = _options.ScanWorkers, Step = _options.ScanStep, ShowRange = checkShowRange.Checked,
-                Extreme = radioSpeedExtreme.Checked, Compact = _desktopCompact, Mask = _settings.Mask,
+                Extreme = radioSpeedExtreme.Checked, Compact = _desktopCompact, MaskOpacity = _settings.MaskOpacity,
                 HoverColor = snapshot.recordedBgrsRaw.Count > 0 ? WindowsEngineHost.ToHex(snapshot.recordedBgrsRaw[0]) : null,
                 ClearColor = snapshot.recordedBgrsRaw.Count > 1 ? WindowsEngineHost.ToHex(snapshot.recordedBgrsRaw[1]) : null,
                 HasRange = snapshot.recordedRange.HasValue, Range = range,
@@ -78,14 +78,15 @@ namespace WplaceColorWatch
             checkShowRange.Checked = showRange;
             if (showRange && _desktopHost?.ReadOnly != true) RefreshRangePreview();
         }
-        internal void SetDesktopMask(MaskType mask)
+        internal void SetDesktopMaskOpacity(int opacity)
         {
-            if (mask is not (MaskType.BlueMarble or MaskType.Official)) throw new ArgumentOutOfRangeException(nameof(mask));
-            if (DesktopBusy || _desktopHost?.PromptOpen == true || _settings.Mask == mask) return;
-            var previous = _settings.Mask;
-            _settings.Mask = mask;
+            if (opacity < 0 || opacity > 100) throw new ArgumentOutOfRangeException(nameof(opacity));
+            if (DesktopBusy || _desktopHost?.PromptOpen == true || _settings.MaskOpacity == opacity) return;
+            var previous = _settings.MaskOpacity;
+            _settings.MaskOpacity = opacity;
             try { if (_desktopHost?.ReadOnly != true) _settings.Write(_desktopHost?.SettingsPath); }
-            catch { _settings.Mask = previous; throw; }
+            catch { _settings.MaskOpacity = previous; throw; }
+            _matcher = new PaletteColorMatcher(opacity);
         }
 
         internal void SetDesktopCompact(bool compact) => _desktopCompact = compact;

@@ -38,6 +38,7 @@ public partial class Form1 : Form
     private readonly Options _options;
     private readonly uint _showMainWindowMessage;
     private UserSettings _settings = new();
+    private PaletteColorMatcher _matcher = new(100);
     private readonly RuntimeState _state = new();
     private IntPtr _hookId = IntPtr.Zero;
     private NativeMethods.LowLevelKeyboardProc? _hookProc;
@@ -586,7 +587,7 @@ public partial class Form1 : Form
 
     private bool IsWhiteSample(BgrColor sample)
     {
-        return PaletteColorMatcher.TryMatch(sample, _options.ColorTol, out var color) && IsWhite(color);
+        return _matcher.TryMatch(sample, _options.ColorTol, out var color) && IsWhite(color);
     }
 
     /// <summary>
@@ -599,7 +600,7 @@ public partial class Form1 : Form
         {
             return false;
         }
-        return PaletteColorMatcher.TryMatch(sample, _options.ColorTol, out var color) &&
+        return _matcher.TryMatch(sample, _options.ColorTol, out var color) &&
             color != target && pickedColors.Contains(color);
     }
 
@@ -1223,6 +1224,7 @@ public partial class Form1 : Form
     private void LoadUserSettings()
     {
         _settings = _desktopHost?.ReadOnly == true ? new UserSettings() : UserSettings.Load(_desktopHost?.SettingsPath);
+        _matcher = new PaletteColorMatcher(_settings.MaskOpacity);
         _options.ScanStep = _settings.ScanStep;
         // ScanWorkers 按 CPU 核数钳制，与 ReadScanWorkers 的上限一致，避免换机器后首次填充报“输入无效”
         int maxWorkers = Math.Max(1, Environment.ProcessorCount - 1);
@@ -1647,7 +1649,7 @@ public partial class Form1 : Form
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         // 更新说明显示期间放行按键，避免 A 触发取色，并让 Esc 正常关闭弹窗。
-        if ((_desktopHost != null && _settings.Mask == null) || _releaseNotesDialog != null || _desktopHost?.PromptOpen == true || (_desktopHost?.HotkeysSuspended == true && !IsColorRulePicking))
+        if (_releaseNotesDialog != null || _desktopHost?.PromptOpen == true || (_desktopHost?.HotkeysSuspended == true && !IsColorRulePicking))
         {
             return NativeMethods.CallNextHookEx(_hookId, nCode, wParam, lParam);
         }
@@ -2080,7 +2082,7 @@ public partial class Form1 : Form
     private Dictionary<long, BgrColor?> ScanLabeledGrid(Rectangle rect, CancellationToken token, List<Point>? polygon = null)
     {
         var poly = polygon != null && polygon.Count >= 3 ? new OrthogonalPolygon(polygon) : null;
-        Logger.Debug($"[scan_island] ScanLabeledGrid rect={rect} targets={PaletteColorMatcher.Colors.Count} displayProfile=half-on-F8F4F0 tol={_options.IslandColorTol}(island) step={_options.ScanStep} workers={_options.ScanWorkers}");
+        Logger.Debug($"[scan_island] ScanLabeledGrid rect={rect} targets={PaletteColorMatcher.Colors.Count} opacity={_matcher.Opacity}% tol={_options.IslandColorTol}(island) step={_options.ScanStep} workers={_options.ScanWorkers}");
 
         int width = Math.Max(1, rect.Width);
         int height = Math.Max(1, rect.Height);
@@ -2165,7 +2167,7 @@ public partial class Form1 : Form
                             continue;
                         }
                         var bgr = ReadBufferPixel(x, y);
-                        BgrColor? label = PaletteColorMatcher.TryMatch(bgr, islandTol, out var matchedColor)
+                        BgrColor? label = _matcher.TryMatch(bgr, islandTol, out var matchedColor)
                             ? matchedColor : null;
                         grid[IslandDetector.ToHexKey(col, row)] = label;
                         if (label.HasValue)
@@ -2213,12 +2215,13 @@ public partial class Form1 : Form
             .ToDictionary(group => group.Key, group => group.SelectMany(island => island.Points).ToList());
     }
 
-    private void RunMissingDetection(Rectangle rect, List<BgrColor> allowedColors, MaskType mask, CancellationToken token, List<Point>? polygon)
+    private void RunMissingDetection(Rectangle rect, List<BgrColor> allowedColors, CancellationToken token, List<Point>? polygon)
     {
         int islandCount = 0;
         string diagnostics = "";
-        var groups = mask == MaskType.Official
-            ? ScanMatchingPointsForAllColors(rect, allowedColors, token, polygon, halfTransparentOnly: true)
+        bool opaque = _matcher.Opacity == 100;
+        var groups = !opaque
+            ? ScanMatchingPointsForAllColors(rect, allowedColors, token, polygon, overlayOnly: true)
             : FindIslandGroups(rect, allowedColors, token, polygon, out islandCount, out diagnostics);
         token.ThrowIfCancellationRequested();
         int totalMissed = groups.Values.Sum(points => points.Count);
@@ -2228,7 +2231,7 @@ public partial class Form1 : Form
             BeginInvoke((Action)(() => IslandConfirmDialog.Show(this, message, "遗漏检测", false)));
             return;
         }
-        var summary = mask == MaskType.Official ? $"检测到 {totalMissed} 个半透明采样点。" : $"检测到 {islandCount} 处孤岛（{totalMissed} 个像素点）。";
+        var summary = !opaque ? $"检测到 {totalMissed} 个半透明采样点。" : $"检测到 {islandCount} 处孤岛（{totalMissed} 个像素点）。";
         var orderedMissed = new List<Point>();
         foreach (var kv in groups)
         {
@@ -2274,8 +2277,7 @@ public partial class Form1 : Form
     /// </summary>
     private void BeginIslandDetection()
     {
-        var mask = _settings.Mask ?? MaskType.BlueMarble;
-        Logger.Debug($"[ui] BeginMissingDetection mask={mask}");
+        Logger.Debug($"[ui] BeginMissingDetection opacity={_matcher.Opacity}%");
         if (!btnRunIslandDetect.Enabled)
         {
             Logger.Debug("[island] button disabled, skipping");
@@ -2347,7 +2349,7 @@ public partial class Form1 : Form
         {
             try
             {
-                RunMissingDetection(snapshot.recordedRange.Value, allowedColors, mask, token, _state.GetPolygon());
+                RunMissingDetection(snapshot.recordedRange.Value, allowedColors, token, _state.GetPolygon());
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -2387,10 +2389,10 @@ public partial class Form1 : Form
         List<BgrColor> allowedTargets,
         CancellationToken token,
         List<Point>? polygon = null,
-        bool halfTransparentOnly = false)
+        bool overlayOnly = false)
     {
         var poly = polygon != null && polygon.Count >= 3 ? new OrthogonalPolygon(polygon) : null;
-        Logger.Debug($"[scan_all] ScanMatchingPointsForAllColors rect={rect} palette={PaletteColorMatcher.Colors.Count} allowed={allowedTargets.Count} displayProfile=half-on-F8F4F0 tol={_options.ColorTol}");
+        Logger.Debug($"[scan_all] ScanMatchingPointsForAllColors rect={rect} palette={PaletteColorMatcher.Colors.Count} allowed={allowedTargets.Count} opacity={_matcher.Opacity}% tol={_options.ColorTol}");
         var allowedSet = new HashSet<BgrColor>(allowedTargets);
         var groups = new ConcurrentDictionary<BgrColor, ConcurrentBag<Point>>();
         foreach (var color in allowedTargets)
@@ -2441,9 +2443,9 @@ public partial class Form1 : Form
                 byte r = buffer[offset + 2];
                 var pixelColor = new BgrColor(b, g, r);
 
-                var matched = halfTransparentOnly
-                    ? PaletteColorMatcher.TryMatchHalfTransparent(pixelColor, out var matchedColor)
-                    : PaletteColorMatcher.TryMatch(pixelColor, _options.ColorTol, out matchedColor);
+                var matched = overlayOnly
+                    ? _matcher.TryMatchOverlay(pixelColor, out var matchedColor)
+                    : _matcher.TryMatch(pixelColor, _options.ColorTol, out matchedColor);
                 if (matched && allowedSet.Contains(matchedColor))
                 {
                     groups[matchedColor].Add(new Point(rect.Left + x, rect.Top + y));

@@ -24,6 +24,13 @@ internal static class Program
         File.WriteAllText(path, """
             { "ScanWorkers": 1, "ScanStep": 14, "SpeedPreset": 1, "CompactLayout": true }
             """);
+        foreach (var (legacy, expected) in new[] { (1, 100), (2, 50) })
+        {
+            var legacyPath = Path.Combine(DirectoryPath, $"legacy-{legacy}.json");
+            File.WriteAllText(legacyPath, JsonSerializer.Serialize(new { Mask = legacy, ScanStep = 14 }));
+            var migrated = UserSettings.Load(legacyPath);
+            Check(migrated.MaskOpacity == expected && migrated.ScanStep == 14, $"Legacy mask {legacy} migrates to {expected}%");
+        }
         var host = new WindowsEngineHost(enableHotkeys: false, settingsPath: path);
         try
         {
@@ -33,9 +40,9 @@ internal static class Program
             Check(await OnEngine(form, () => Get<IntPtr>(form, "_hookId") == IntPtr.Zero), "Integration harness installs no global hook");
             Check(host.Snapshot.Step == 14 && host.Snapshot.Extreme, "Existing settings load through the bridge");
             Check(!host.Snapshot.Compact, "Legacy saved compact layout cannot override full mode at startup");
-            Check(host.Snapshot.Mask == null, "Legacy settings require an explicit mask choice");
-            await host.SetMaskAsync(MaskType.BlueMarble);
-            Check(UserSettings.Load(path).Mask == MaskType.BlueMarble, "Mask choice is saved before exit");
+            Check(host.Snapshot.MaskOpacity == 100, "Settings without a mask default to 100% opacity");
+            await host.SetMaskOpacityAsync(0);
+            Check(UserSettings.Load(path).MaskOpacity == 0, "Zero opacity is saved before exit");
 
             await host.SetParametersAsync(1, 17, false, false);
             await host.SetCompactAsync(true);
@@ -107,15 +114,15 @@ internal static class Program
                 Check(result.Message.Contains("未检测到遗漏"), "Real missing-detection scan runs against the harness canvas and returns through the prompt bridge");
                 Check(await OnEngine(form, () => Get<UserSettings>(form, "_settings").SkipIslandRecommendation), "Recommendation checkbox persists its original setting");
 
-                await host.SetMaskAsync(MaskType.Official);
+                await host.SetMaskOpacityAsync(25);
                 await OnEngine(form, () =>
                 {
                     // 20 x 10 staggered samples. Only the left half uses a display alias.
                     canvas.BackColor = Color.FromArgb(237, 28, 36);
-                    var alias = PaletteColorMatcher.GetHalfTransparentColor(BgrColor.FromColor(canvas.BackColor));
+                    var alias = Color.FromArgb(245, 190, 189); // 25% #ED1C24 on #F8F4F0
                     canvas.Paint += (_, e) =>
                     {
-                        using var brush = new SolidBrush(Color.FromArgb(alias.R, alias.G, alias.B));
+                        using var brush = new SolidBrush(alias);
                         e.Graphics.FillRectangle(brush, 20, 20, 100, 100);
                     };
                     canvas.Refresh(); return true;
@@ -125,13 +132,13 @@ internal static class Program
                 await host.ExecuteAsync(DesktopCommand.DetectMissing);
                 result = await resultPrompt.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 await Until(() => !host.Snapshot.Busy);
-                Check(result.Confirm && result.Message.Contains("100 个半透明采样点"), "Official mask finds the entire translucent block and skips opaque pixels in compact mode");
+                Check(result.Confirm && result.Message.Contains("100 个半透明采样点"), "25% mask finds the entire translucent block and skips opaque pixels in compact mode");
                 await host.ExecuteAsync(DesktopCommand.AddExcluded, "#ED1C24");
                 resultPrompt = new(TaskCreationOptions.RunContinuationsAsynchronously);
                 await host.ExecuteAsync(DesktopCommand.DetectMissing);
                 result = await resultPrompt.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 await Until(() => !host.Snapshot.Busy);
-                Check(!result.Confirm && result.Message.Contains("未检测到遗漏"), "Official missing detection respects excluded colors");
+                Check(!result.Confirm && result.Message.Contains("未检测到遗漏"), "Opacity-based missing detection respects excluded colors");
 
                 await OnEngine(form, () =>
                 {
@@ -171,7 +178,7 @@ internal static class Program
             {
                 await restart.Ready.WaitAsync(TimeSpan.FromSeconds(10));
                 Check(!restart.Snapshot.Compact && restart.Snapshot.Step == 10, "Restart opens in full mode while retaining the saved step");
-                Check(restart.Snapshot.Mask == MaskType.Official, "Restart restores the chosen mask without onboarding");
+                Check(restart.Snapshot.MaskOpacity == 25, "Restart restores the saved opacity");
                 Check(restart.Snapshot.Wanted.Count == 0 && restart.Snapshot.Excluded.Count == 0, "Session-only color rules do not become persistent");
             }
             finally { await restart.ShutdownAsync().WaitAsync(TimeSpan.FromSeconds(10)); }

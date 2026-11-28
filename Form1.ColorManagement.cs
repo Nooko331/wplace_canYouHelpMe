@@ -285,7 +285,7 @@ public partial class Form1
 
     private (BgrColor color, int diff) NormalizePaletteColor(BgrColor sample)
     {
-        return PaletteColorMatcher.FindNearest(sample);
+        return _matcher.FindNearest(sample);
     }
 
     private void RefreshColorRuleUi()

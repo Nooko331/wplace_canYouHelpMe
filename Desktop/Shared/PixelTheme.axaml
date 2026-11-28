@@ -5,34 +5,6 @@
     <Setter Property="Background" Value="#F4F8FE" />
     <Setter Property="UseLayoutRounding" Value="True" />
   </Style>
-  <Style Selector="RadioButton.mask">
-    <Setter Property="Cursor" Value="Hand" />
-    <Setter Property="Template">
-      <ControlTemplate>
-        <Border Name="Tile" Background="White" BorderBrush="#8198B7" BorderThickness="1" Padding="14,4">
-          <Grid ColumnDefinitions="18,*" ColumnSpacing="10">
-            <Ellipse Name="Ring" Width="16" Height="16" Stroke="#536F91" StrokeThickness="1.5" />
-            <Ellipse Name="Dot" Width="8" Height="8" Fill="#086BFA" IsVisible="False" />
-            <ContentPresenter Grid.Column="1" Content="{TemplateBinding Content}" VerticalAlignment="Center" />
-          </Grid>
-        </Border>
-      </ControlTemplate>
-    </Setter>
-  </Style>
-  <Style Selector="RadioButton.mask:checked /template/ Border#Tile">
-    <Setter Property="BorderBrush" Value="#086BFA" />
-    <Setter Property="Background" Value="#EDF4FE" />
-  </Style>
-  <Style Selector="RadioButton.mask:checked /template/ Ellipse#Ring">
-    <Setter Property="Stroke" Value="#086BFA" />
-  </Style>
-  <Style Selector="RadioButton.mask:checked /template/ Ellipse#Dot">
-    <Setter Property="IsVisible" Value="True" />
-  </Style>
-  <Style Selector="RadioButton.mask:pointerover /template/ Border#Tile, RadioButton.mask:focus-visible /template/ Border#Tile">
-    <Setter Property="BorderBrush" Value="#183456" />
-    <Setter Property="Background" Value="#E0EDFF" />
-  </Style>
   <Style Selector="Button.pixel">
     <Setter Property="Width" Value="38" />
     <Setter Property="Height" Value="40" />

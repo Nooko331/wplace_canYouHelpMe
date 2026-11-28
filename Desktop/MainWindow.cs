@@ -49,7 +49,6 @@ public sealed partial class MainWindow : Window
         AddHandler(LostFocusEvent, (_, _) => Engine.EditingInput = false);
         full = BuildFull(); compact = new Viewbox { Child = BuildCompact(), Stretch = Stretch.Uniform, StretchDirection = StretchDirection.DownOnly }; compact.IsVisible = false;
         var root = new Grid(); root.Children.Add(full); root.Children.Add(compact);
-        BuildMaskGuide(root);
         frame = new Border { BorderBrush = Ui.Navy, BorderThickness = new Thickness(1), Background = Brushes.White, Child = root, Margin = new Thickness(0, 0, 2, 2) };
         Content = frame;
         workers.Maximum = Math.Max(1, Environment.ProcessorCount - 1);
@@ -98,7 +97,6 @@ public sealed partial class MainWindow : Window
                 if (Program.Arguments.Contains("--preview-release-notes")) { await ShowNotesAsync(false); Close(); return; }
                 if (!Program.Preview)
                 {
-                    await maskChosen.Task;
                     if (closing) return;
                     await ShowNotesAsync(true);
                     _ = CheckUpdatesAsync();
@@ -133,8 +131,7 @@ public sealed partial class MainWindow : Window
         left.Children.Add(Ui.Note("拖动框选矩形 · 单击绘制正交多边形 · Esc 取消"));
         var eye = Ui.Button("显示范围与扫描点", ToggleRange, "eye", id: "FullShowRange"); eyes.Add(eye); editable.Add(eye); left.Children.Add(eye);
         left.Children.Add(Ui.Rule());
-        maskSection = BuildMaskSection(false);
-        left.Children.Add(maskSection); left.Children.Add(Ui.Rule());
+        left.Children.Add(BuildMaskSection()); left.Children.Add(Ui.Rule());
         var colorHeading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") }; colorHeading.Children.Add(Section("palette", "颜色规则"));
         var manage = Ui.Button("颜色管理", OpenColors, id: "FullColors"); editable.Add(manage); Grid.SetColumn(manage, 1); colorHeading.Children.Add(manage); left.Children.Add(colorHeading);
         left.Children.Add(Ui.Column(Ui.Row(wantedText, wantedPreview), Ui.Row(excludedText, excludedPreview)));
@@ -231,7 +228,7 @@ public sealed partial class MainWindow : Window
         {
             if (!initialStateApplied && snapshot.Ready) { initialStateApplied = true; SetCompact(snapshot.Compact, false); }
             foreach (var c in editable) c.IsEnabled = snapshot.Ready && !snapshot.Busy;
-            UpdateMaskGuide(snapshot);
+            if (opacityEdits == 0) maskOpacity.Value = snapshot.MaskOpacity;
             foreach (var b in balanced) b.Classes.Set("selected", !snapshot.Extreme);
             foreach (var b in extreme) b.Classes.Set("selected", snapshot.Extreme);
             foreach (var b in eyes) b.Classes.Set("selected", snapshot.ShowRange);
@@ -322,7 +319,7 @@ public sealed partial class MainWindow : Window
         notesWindow = null; UpdateHotkeySuppression();
         if (shown && !Program.Preview) history.MarkViewed(Program.Version);
     }
-    private void UpdateHotkeySuppression() => Engine.HotkeysSuspended = maskGuide.IsVisible || notesWindow != null || guideWindow != null;
+    private void UpdateHotkeySuppression() => Engine.HotkeysSuspended = notesWindow != null || guideWindow != null;
     internal void RegisterChild(Window window)
     {
         children.Add(window); window.Closed += (_, _) => children.Remove(window);
@@ -348,7 +345,6 @@ public sealed partial class MainWindow : Window
     {
         if (allowClose) return;
         e.Cancel = true; if (closing) return; closing = true;
-        maskChosen.TrySetResult();
         foreach (var child in children.ToArray()) child.Close();
         try { await Engine.ShutdownAsync(); }
         catch (Exception error) { Logger.Error("[desktop-shutdown] " + error); }

@@ -121,15 +121,19 @@ internal static class Ui
 internal sealed class NumberField : Border
 {
     private readonly TextBox input;
+    private readonly int minimum;
+    private readonly string suffix;
     private int value;
     internal int Maximum { get; set; } = int.MaxValue;
     internal int Value => value;
     internal event Action<int>? Committed;
-    internal NumberField(string id, string name, int initial, double width = 100)
+    internal NumberField(string id, string name, int initial, double width = 100, int minimum = 1, string suffix = "")
     {
         Name = id; Width = width; Height = 40; BorderBrush = Brush.Parse("#8198B7"); BorderThickness = new Thickness(1); Background = Brushes.White;
+        this.minimum = minimum;
+        this.suffix = suffix;
         value = initial;
-        input = new TextBox { Name = id + "Input", Text = initial.ToString(), Classes = { "step" }, MaxLength = 10 };
+        input = new TextBox { Name = id + "Input", Text = initial + suffix, Classes = { "step" }, MaxLength = 10 };
         AutomationProperties.SetName(input, name); AutomationProperties.SetAutomationId(input, id + "Input");
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,22"), Margin = new Thickness(1) };
         grid.Children.Add(input);
@@ -145,25 +149,29 @@ internal sealed class NumberField : Border
     }
     internal bool Commit()
     {
-        if (!int.TryParse(input.Text, out var n) || n < 1 || n > Maximum)
+        var text = input.Text?.Trim();
+        if (suffix == "%" && (text?.EndsWith('%') == true || text?.EndsWith('％') == true))
+            text = text.Substring(0, text.Length - 1);
+        if (!int.TryParse(text, out var n) || n < minimum || n > Maximum)
         {
-            input.Text = value.ToString();
-            ToolTip.SetTip(input, $"请输入 1–{Maximum} 的整数，已恢复为 {value}。");
+            input.Text = value + suffix;
+            ToolTip.SetTip(input, $"请输入 {minimum}–{Maximum} 的整数，已恢复为 {value}。");
             ToolTip.SetIsOpen(input, true); return false;
         }
+        input.Text = n + suffix;
         if (n == value) return true;
         value = n; Committed?.Invoke(value); return true;
     }
     private void Change(int delta)
     {
         if (!Commit()) return;
-        value = (int)Math.Clamp((long)value + delta, 1, Maximum); input.Text = value.ToString(); Committed?.Invoke(value);
+        value = (int)Math.Clamp((long)value + delta, minimum, Maximum); input.Text = value + suffix; Committed?.Invoke(value);
     }
-    internal void UpdateValue(int n)
+    internal void UpdateValue(int n, bool force = false)
     {
-        if (input.IsKeyboardFocusWithin) return;
+        if (!force && input.IsKeyboardFocusWithin) return;
         value = n;
-        var text = n.ToString(); if (input.Text != text) input.Text = text;
+        var text = n + suffix; if (input.Text != text) input.Text = text;
     }
 }
 

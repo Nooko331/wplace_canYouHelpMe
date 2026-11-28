@@ -8,10 +8,9 @@ namespace WplaceColorWatch
 /// The 63 canonical paint colors and their display aliases. A display alias always
 /// resolves back to a canonical color before wanted/excluded rules are applied.
 /// </summary>
-public static class PaletteColorMatcher
+public sealed class PaletteColorMatcher
 {
     // Compatibility assumption calibrated from #600018 -> #AC7A84.
-    // This is a fixed 50% opacity profile over #F8F4F0, not automatic opacity detection.
     public static BgrColor BlendBackground { get; } = new BgrColor(240, 244, 248);
 
     public static IReadOnlyList<BgrColor> Colors { get; } = Array.AsReadOnly(new[]
@@ -81,22 +80,56 @@ public static class PaletteColorMatcher
         new BgrColor(209, 185, 179)  // Light Slate (BGR: 209, 185, 179) -> RGB: 179, 185, 209
     });
 
-    private static readonly DisplayRange[] HalfTransparentRanges = CreateDisplayRanges();
+    // A null entry marks display colors shared by multiple paints after rounding.
+    private readonly Dictionary<BgrColor, BgrColor?> aliases = new();
+    private static readonly HashSet<BgrColor> Originals = new HashSet<BgrColor>(Colors);
+    public int Opacity { get; }
 
-    /// <summary>Rounded-up representative for the built-in 50% display color.</summary>
-    public static BgrColor GetHalfTransparentColor(BgrColor color)
+    public PaletteColorMatcher(int opacity)
     {
-        return BlendHalf(color, roundUp: true);
+        if (opacity < 0 || opacity > 100) throw new ArgumentOutOfRangeException(nameof(opacity));
+        Opacity = opacity;
+        if (opacity == 0 || opacity == 100) return;
+
+        foreach (var color in Colors)
+        {
+            // At an exact half-channel value, either rounding direction can occur on screen.
+            var low = Blend(color, 49);
+            var high = Blend(color, 50);
+            for (int b = low.B; b <= high.B; b++)
+            for (int g = low.G; g <= high.G; g++)
+            for (int r = low.R; r <= high.R; r++)
+            {
+                var sample = new BgrColor((byte)b, (byte)g, (byte)r);
+                if (sample == BlendBackground || Originals.Contains(sample)) continue;
+                aliases[sample] = aliases.ContainsKey(sample) ? (BgrColor?)null : color;
+            }
+        }
     }
 
-    /// <summary>
-    /// Resolves exact opaque colors or calculated display aliases to canonical colors.
-    /// Otherwise returns the nearest opaque color for the caller's existing tolerance.
-    /// Do not extend that tolerance around display aliases: the compressed palette would
-    /// turn the modeled background into white at the default island tolerance of 10.
-    /// </summary>
-    public static (BgrColor color, int diff) FindNearest(BgrColor sample)
+    public BgrColor GetDisplayColor(BgrColor color) => Blend(color, 50);
+
+    private BgrColor Blend(BgrColor color, int rounding)
     {
+        byte Channel(byte paint, byte background) =>
+            (byte)((paint * Opacity + background * (100 - Opacity) + rounding) / 100);
+        return new BgrColor(Channel(color.B, BlendBackground.B), Channel(color.G, BlendBackground.G),
+            Channel(color.R, BlendBackground.R));
+    }
+
+    public bool TryMatchOverlay(BgrColor sample, out BgrColor color)
+    {
+        aliases.TryGetValue(sample, out var original);
+        color = original.GetValueOrDefault();
+        return original.HasValue;
+    }
+
+    public (BgrColor color, int diff) FindNearest(BgrColor sample)
+    {
+        if (sample == BlendBackground) return (default, int.MaxValue);
+        if (aliases.TryGetValue(sample, out var original))
+            return original.HasValue ? (original.Value, 0) : (default, int.MaxValue);
+
         var best = Colors[0];
         int minDiff = int.MaxValue;
         foreach (var color in Colors)
@@ -106,74 +139,17 @@ public static class PaletteColorMatcher
             {
                 minDiff = diff;
                 best = color;
-                if (diff == 0) return (best, 0);
+                if (diff == 0) break;
             }
         }
-
-        if (TryMatchHalfTransparent(sample, out var original)) return (original, 0);
         return (best, minDiff);
     }
 
-    public static bool TryMatchHalfTransparent(BgrColor sample, out BgrColor original)
-    {
-        foreach (var range in HalfTransparentRanges)
-        {
-            if (range.Contains(sample))
-            {
-                original = range.Original;
-                return true;
-            }
-        }
-        original = default;
-        return false;
-    }
-
-    public static bool TryMatch(BgrColor sample, int tolerance, out BgrColor color)
+    public bool TryMatch(BgrColor sample, int tolerance, out BgrColor color)
     {
         var match = FindNearest(sample);
         color = match.color;
-        return match.diff <= tolerance;
-    }
-
-    private static BgrColor BlendHalf(BgrColor color, bool roundUp)
-    {
-        int rounding = roundUp ? 1 : 0;
-        return new BgrColor(
-            (byte)((color.B + BlendBackground.B + rounding) / 2),
-            (byte)((color.G + BlendBackground.G + rounding) / 2),
-            (byte)((color.R + BlendBackground.R + rounding) / 2));
-    }
-
-    private static DisplayRange[] CreateDisplayRanges()
-    {
-        var ranges = new DisplayRange[Colors.Count];
-        for (int i = 0; i < Colors.Count; i++)
-        {
-            var color = Colors[i];
-            ranges[i] = new DisplayRange(color, BlendHalf(color, false), BlendHalf(color, true));
-        }
-        return ranges;
-    }
-
-    private readonly struct DisplayRange
-    {
-        public BgrColor Original { get; }
-        private readonly BgrColor _lower;
-        private readonly BgrColor _upper;
-
-        public DisplayRange(BgrColor original, BgrColor lower, BgrColor upper)
-        {
-            Original = original;
-            _lower = lower;
-            _upper = upper;
-        }
-
-        public bool Contains(BgrColor sample)
-        {
-            return sample.R >= _lower.R && sample.R <= _upper.R &&
-                   sample.G >= _lower.G && sample.G <= _upper.G &&
-                   sample.B >= _lower.B && sample.B <= _upper.B;
-        }
+        return match.diff != int.MaxValue && match.diff <= tolerance;
     }
 }
 }

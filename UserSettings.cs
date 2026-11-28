@@ -4,8 +4,6 @@ using System.Text.Json;
 
 namespace WplaceColorWatch
 {
-    public enum MaskType { BlueMarble = 1, Official = 2 }
-
     /// <summary>
     /// 用户 UI 偏好的持久化设置，独立于 <see cref="Options"/>（后者是 CLI 注入的算法参数）。
     /// 存为 exe 同级目录下的 user_settings.json。任何读写异常都被吞掉，绝不影响启动或关闭流程。
@@ -20,7 +18,7 @@ namespace WplaceColorWatch
         public int ScanStep { get; set; } = 10;
         public bool ShowRange { get; set; }
         public int SpeedPreset { get; set; } = SpeedBalanced;
-        public MaskType? Mask { get; set; }
+        public int MaskOpacity { get; set; } = 100;
         public bool SkipIslandRecommendation { get; set; }
 
         internal void Write(string? filePath)
@@ -66,7 +64,9 @@ namespace WplaceColorWatch
                     return new UserSettings();
                 }
                 var json = File.ReadAllText(path);
-                var settings = JsonSerializer.Deserialize<UserSettings>(json);
+                using var document = JsonDocument.Parse(json);
+                var root = document.RootElement;
+                var settings = root.Deserialize<UserSettings>();
                 if (settings == null)
                 {
                     return new UserSettings();
@@ -76,7 +76,12 @@ namespace WplaceColorWatch
                 {
                     settings.SpeedPreset = SpeedBalanced;
                 }
-                if (settings.Mask is not (MaskType.BlueMarble or MaskType.Official)) settings.Mask = null;
+                // The previous Official setting used a fixed 50% blend. Blue Marble used opaque islands.
+                if (!root.TryGetProperty(nameof(MaskOpacity), out _) &&
+                    root.TryGetProperty("Mask", out var legacyMask) && legacyMask.ValueKind == JsonValueKind.Number &&
+                    legacyMask.TryGetInt32(out int mode) && mode == 2)
+                    settings.MaskOpacity = 50;
+                settings.MaskOpacity = Math.Clamp(settings.MaskOpacity, 0, 100);
                 return settings;
             }
             catch (Exception ex)
